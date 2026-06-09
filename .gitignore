@@ -24,3 +24,5 @@ src/*.dll
 
 # Environments (handled in fbrglm-experiments, not here)
 environment.yml
+/doc/
+/Meta/

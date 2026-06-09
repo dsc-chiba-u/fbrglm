@@ -1,0 +1,190 @@
+---
+title: "Getting started with fbrglm"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting started with fbrglm}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment  = "#>",
+  fig.width  = 6,
+  fig.height = 4
+)
+set.seed(20260101)
+```
+
+## What `fbrglm` is for
+
+`fbrglm` is a formula-based front-end for regularized generalized linear
+models. Internally it delegates the fit to
+[`glmnet`](https://cran.r-project.org/package=glmnet); the wrapper's job
+is to make the user-facing experience look like base R's `glm()` — a
+`formula` + `data.frame`, automatic factor handling, complete-case
+filtering, and the familiar S3 methods (`print`, `summary`, `coef`,
+`predict`, `nobs`, `plot`).
+
+The MVP described here is `infer = "none"`: it returns regularized point
+estimates and **does not** report classical standard errors, z values,
+p values, or confidence intervals. Honest post-selection inference (via
+data splitting or selective inference) is on the roadmap; see the
+package `TODO.md`.
+
+```{r setup}
+library(fbrglm)
+```
+
+## A small binomial example
+
+```{r}
+n <- 150
+dat <- data.frame(
+    y  = rbinom(n, 1, 0.5),
+    x1 = rnorm(n),
+    x2 = rnorm(n),
+    x3 = rnorm(n)
+)
+
+fit <- fbrglm(y ~ x1 + x2 + x3, data = dat,
+              family = "binomial",
+              lambda = "cv_min")
+```
+
+`print()` shows the call and the basics of the fit:
+
+```{r}
+print(fit)
+```
+
+`summary()` returns a structured object that includes the call, family,
+chosen λ, complete-case bookkeeping, and the (regularized) coefficient
+vector with zeros included:
+
+```{r}
+summary(fit)
+```
+
+Coefficients and predictions follow the same shapes you'd expect from
+`glm()`:
+
+```{r}
+coef(fit)
+
+head(predict(fit, newdata = dat[1:5, ], type = "response"))
+```
+
+A `plot()` method is registered; it delegates to `plot.cv.glmnet()` when
+λ was chosen by cross-validation, and to `plot.glmnet()` otherwise.
+
+```{r, eval = FALSE}
+plot(fit)
+```
+
+## Choosing `lambda`
+
+There are three rules, exposed through a single argument:
+
+```{r}
+fit_min <- fbrglm(y ~ x1 + x2 + x3, data = dat,
+                  family = "binomial", lambda = "cv_min")
+fit_1se <- fbrglm(y ~ x1 + x2 + x3, data = dat,
+                  family = "binomial", lambda = "cv_1se")
+fit_fix <- fbrglm(y ~ x1 + x2 + x3, data = dat,
+                  family = "binomial",
+                  lambda = "fix", lambda_value = 0.05)
+
+c(cv_min = fit_min$lambda_value,
+  cv_1se = fit_1se$lambda_value,
+  fix    = fit_fix$lambda_value)
+```
+
+`"cv_min"` and `"cv_1se"` go through `cv.glmnet()`; `"fix"` skips CV and
+goes straight to `glmnet()` at the supplied `lambda_value`. The numeric
+λ actually used is always available at `fit$lambda_value`.
+
+## Factor predictors
+
+Factor columns are auto-dummied via `model.matrix()`, and the training
+factor levels are stored on the fit object so `predict(newdata = ...)`
+can rebuild a design matrix that matches the training column structure
+— even when some training levels are missing from `newdata`.
+
+```{r}
+n_train <- 200
+train <- data.frame(
+    y  = rbinom(n_train, 1, 0.5),
+    x1 = rnorm(n_train),
+    g  = factor(sample(c("A", "B", "C"), n_train, replace = TRUE),
+                levels = c("A", "B", "C"))
+)
+fit_f <- fbrglm(y ~ x1 + g, data = train,
+                family = "binomial",
+                lambda = "fix", lambda_value = 0.05)
+
+## newdata is missing level "C"
+test <- data.frame(
+    x1 = rnorm(10),
+    g  = factor(rep(c("A", "B"), 5), levels = c("A", "B", "C"))
+)
+head(predict(fit_f, newdata = test, type = "response"))
+```
+
+`fbrglm` also tolerates the narrower case where `newdata`'s factor has
+its **levels** narrowed (not just its values): missing one-hot columns
+are padded with zeros before being handed to `glmnet`.
+
+## Missing values
+
+`fbrglm()` drops rows with any `NA` from the modelling frame, prints a
+one-line note, and records the counts on the fit object under
+`fit$nobs_info`.
+
+```{r}
+dat_na <- dat
+dat_na$y[1:5] <- NA
+fit_na <- fbrglm(y ~ x1 + x2 + x3, data = dat_na,
+                 family = "binomial",
+                 lambda = "fix", lambda_value = 0.05)
+
+fit_na$nobs_info
+nobs(fit_na)
+```
+
+## Reaching the underlying `glmnet` objects
+
+If you need to use a `glmnet`-specific tool, two accessors get you out
+of the wrapper:
+
+```{r}
+class(as_glmnet(fit_min))
+class(as_cv_glmnet(fit_min))
+
+class(as_glmnet(fit_fix))
+as_cv_glmnet(fit_fix)        # NULL — no CV was run
+```
+
+`as_glmnet()` returns the underlying `glmnet` object (the `$glmnet.fit`
+slot when the wrapper used CV). `as_cv_glmnet()` returns the `cv.glmnet`
+object, or `NULL` for the `"fix"` λ path.
+
+## Limitations (intentional)
+
+The MVP is deliberately narrow:
+
+- only `infer = "none"` is implemented; `"split"` and `"selective"`
+  are planned but not in this release.
+- families: `gaussian`, `binomial`, `poisson` only. `multinomial` and
+  `cox` will land later.
+- the `x` / `y` direct-matrix entry point is reserved but not yet
+  supported — supply `formula` + `data` instead.
+- classical `glm()`-style standard errors, z / p values, and confidence
+  intervals are intentionally **not** shown for `infer = "none"`. Doing
+  so naively for regularized estimators would be misleading; honest
+  inference is the next milestone.
+
+Reproducible benchmarks against `glmnet` and `glmnetUtils` live in a
+separate repository:
+<https://github.com/dsc-chiba-u/fbrglm-experiments>.
