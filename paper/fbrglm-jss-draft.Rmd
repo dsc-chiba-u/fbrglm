@@ -137,6 +137,28 @@ fbrglm does not silently invent encodings.
 the ergonomic gap between glm() and glmnet() once such citations are
 collected. -->
 
+## Design-matrix consistency as an API problem
+
+The factor-level mismatch above is not a flaw in `glmnet`. The
+optimizer correctly expects the caller to provide a design matrix
+compatible with the one used at fit time, and `glmnet::predict()`'s
+column-count check is the right defensive guard. The friction lives at
+the *API boundary* between a formula/data workflow — where the design
+matrix is constructed implicitly by `model.matrix()` from `data` — and
+a matrix-based prediction interface that has no memory of how the
+training matrix was constructed.
+
+fbrglm treats the training design-matrix specification as part of the
+fitted model object: `terms`, `xlevels`, `contrasts`, and the literal
+training column names are stored alongside `coefficients` and
+`lambda_value`, and they are reused at predict time to rebuild a
+matrix that matches the fit. This is analogous to how `glm` objects
+carry `terms` and `xlevels` so that `predict.glm(newdata = ...)` can
+honour the original specification without re-deriving it from the
+caller's hand-built matrix. The goal is reproducibility and reduced
+caller burden, not a faster optimizer; fbrglm pays a small constant
+overhead in exchange for prediction-time safety.
+
 ## Contributions
 
 The contributions of this paper, and of the accompanying R package,
@@ -189,6 +211,17 @@ ergonomic gap, with different scopes:
 <!-- TODO: position fbrglm against parsnip::logistic_reg + glmnet engine
 at greater length once a working manuscript draft exists. -->
 
+## Scope of fbrglm
+
+Within this landscape, `glmnetUtils` is the closest in spirit and
+`tidymodels` is broader and more robust as a general workflow
+framework. fbrglm deliberately targets the narrower middle ground:
+the raw `glmnet` computational backend, a `glm`-like S3 object, and
+explicit prediction-time design-matrix alignment. That narrower scope
+is what allows the package to stay lightweight — there is no
+preprocessing graph, no tuning vocabulary, and no engine abstraction
+layer to maintain.
+
 # Design and implementation
 
 ## `fbrglm()` interface
@@ -230,17 +263,27 @@ A fitted `fbrglm` object is a list of class
 
 ## Prediction-time model matrix reconstruction
 
-`predict.fbrglm` calls
-`model.frame(Terms, newdata, xlev = object$xlevels)` and
-`model.matrix(Terms, mf, contrasts.arg = object$contrasts)` to
-re-encode `newdata`. Internally, a helper aligns the resulting matrix
-to `object$x_colnames` by:
+The training-time `terms`, `xlevels`, and `contrasts` are stored on
+the fitted object at fit time. On `predict(object, newdata = ...)`,
+`predict.fbrglm` passes `newdata` through
+`model.frame(Terms, newdata, xlev = object$xlevels)` to re-level any
+factor variables against the training-time levels, then calls
+`model.matrix(Terms, mf, contrasts.arg = object$contrasts)` to encode
+the rows under the same contrast scheme. An internal alignment helper
+then reshapes the resulting matrix to `object$x_colnames`:
 
-1. padding missing columns with zeros,
-2. dropping any extra columns,
-3. reordering to the training layout.
+1. any training column missing from the test-derived matrix is padded
+   with zeros (typically a one-hot column for a factor level that the
+   test data did not exercise);
+2. any extra column is dropped;
+3. the remaining columns are reordered to match the training layout
+   exactly.
 
-Novel (unseen) factor levels are rejected upstream by `model.frame`.
+Novel — i.e. unseen at fit time — factor levels are rejected at
+`model.frame()` time and surface as hard errors. fbrglm deliberately
+does not invent encodings for them: silently mapping a previously
+unseen level to a zero row would change the meaning of the design
+matrix without notice and is unsafe.
 
 ## λ selection
 
@@ -342,6 +385,22 @@ suite (high-dimensional data, slow CV, inference variants, multiple
 hardware) is planned. *(Hardware and R-version footnote to be added at
 submission.)*
 
+## What the benchmark does and does not show
+
+The benchmark is scoped to two questions:
+
+1. does each method preserve the prediction-time design-matrix
+   contract when training and test factor levels disagree?
+2. how much constant-factor overhead does each method add at fit and
+   predict time on small data?
+
+It does **not** attempt to compare predictive performance (no
+hold-out loss is reported) and it does **not** sweep hyperparameters;
+every method is run at the same fixed λ on identical inputs. Broader
+claims of the form "which package is faster overall" or "which
+package generalises better" would require a larger, hold-out-driven
+study and are out of scope here.
+
 ## Prediction-failure benchmark
 
 A binomial dataset is constructed so that the training factor `g` has
@@ -397,10 +456,16 @@ framework.
 
 ![Runtime benchmark across four scenarios; bars are median of five iterations from `bench::mark()`. This is a small benchmark, not a universal performance claim.](../../fbrglm-experiments/results/figures/runtime_small.png)
 
-In this tested setting, fbrglm is not faster than raw `glmnet`, but
-sits between raw `glmnet` and the `parsnip` / `workflows` pipeline.
-Again, the empirical claim is limited to this small benchmark and is
-not intended as a general performance statement.
+The differences in this small benchmark line up with what each
+method is actually doing: raw `glmnet` is the fastest because it
+receives an already-built matrix and skips formula parsing; fbrglm
+adds the formula-parsing pass plus the prediction-time alignment
+helper; `glmnetUtils` is in a similar regime to fbrglm; the
+`parsnip` / `workflows` path adds the broader workflow-framework
+machinery on every call. The relevant takeaway is therefore that
+fbrglm occupies a lightweight middle ground — *not* that fbrglm is
+the fastest of the four. A "fastest" claim would require a larger
+and more rigorous study.
 
 # Limitations and future work
 
@@ -425,16 +490,19 @@ land:
 
 # Conclusion
 
-fbrglm aims to close the API gap between base R's `glm()` and
-`glmnet` with a small, opinion-light wrapper. The MVP delivers
-formula/data input, automatic factor handling, complete-case
-reporting, a single λ-selection argument, S3 methods that mirror
-`glm()`, and direct accessors to the underlying `glmnet` objects.
-The empirical claim from the small benchmark is modest: fbrglm
-introduces a small constant cost over raw `glmnet` in the tested
-setting and is comparable to `glmnetUtils`, while sitting an order of
-magnitude under the `parsnip` / `workflows` path. Honest post-selection
-inference and additional families remain the headline work for the
-next milestone.
+fbrglm should be understood as a practical API layer over `glmnet`
+rather than as a new modelling system. Its contribution is to make
+formula-based regularized GLM workflows safer and more reproducible —
+specifically, to make the prediction-time design matrix consistent
+with the fit-time design matrix by default, and to surface the
+diagnostic information (missing-row counts, rank status, underlying
+`glmnet` objects) that calling code routinely needs. The empirical
+claim from the small benchmark is intentionally modest: fbrglm
+introduces a small constant overhead over raw `glmnet` in the tested
+setting and is comparable to `glmnetUtils`, while remaining
+substantially lighter than the `parsnip` / `workflows` path. Whether
+richer inference modes — data splitting and selective inference — and
+additional families can be added without losing this simplicity is
+the central question of the next milestone.
 
 # References
