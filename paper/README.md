@@ -12,13 +12,20 @@ paper/
   README.md              # this file
 ```
 
-## Build target
+## Build targets
 
-The active build target is `html_document` because a LaTeX engine
-(`tinytex` / TeX Live) is not installed in the local environment. The
-YAML metadata is already in JSS structure; flipping the `output:`
-block to `rticles::jss_article` and installing a LaTeX distribution
-produces the JSS PDF form from the same source.
+Two pipelines render the same `fbrglm-jss-draft.Rmd`:
+
+- **Development build** — `html_document` rendered to PDF via
+  `weasyprint`. Fast, works without LaTeX, used for day-to-day
+  drafting.
+- **JSS submission build** — `rticles::jss_article` rendered via
+  `pdflatex`. Targets the JSS class file and is the form to attach
+  at submission time.
+
+The source Rmd does not need to be edited to switch between them;
+the JSS driver operates on a temporary copy and leaves the source
+untouched.
 
 ## Building
 
@@ -26,20 +33,34 @@ Rendered HTML / PDF outputs and the `*_files/` / `*_cache/`
 directories that `knitr` produces are **not** tracked in git.
 Regenerate them from the manuscript source.
 
-HTML only:
-
-```sh
-R -q -e 'rmarkdown::render("paper/fbrglm-jss-draft.Rmd")'
-```
-
-HTML **plus** a PDF (via `weasyprint`):
+### Development (html_document + weasyprint)
 
 ```sh
 Rscript scripts/render_paper_pdf.R
 ```
 
-That helper writes `paper/fbrglm-jss-draft.html` and
-`paper/fbrglm-jss-draft.pdf` next to the Rmd. Both are gitignored.
+Writes `paper/fbrglm-jss-draft.html` and `paper/fbrglm-jss-draft.pdf`
+next to the Rmd. Both are gitignored.
+
+### JSS submission (rticles::jss_article + pdflatex)
+
+```sh
+Rscript scripts/render_jss_pdf.R
+```
+
+Writes `paper/fbrglm-jss-draft-jss.pdf` next to the Rmd, again
+gitignored. The driver copies the JSS class file (`jss.cls`),
+BibTeX style (`jss.bst`), and logo (`jsslogo.jpg`) from the
+installed `rticles` template into `paper/` for the duration of the
+render and removes them afterwards. It also applies a handful of
+minimal LaTeX-compat substitutions on a temp copy of the Rmd
+(structured `title` / `keywords` blocks, the `KNITR_ASIS_OUTPUT_TOKEN`
+fix for kable tables, Greek-letter math-mode wrapping, and a
+no-op fallback for `\pandocbounded`); the source Rmd is not modified.
+
+Requirements: an installed LaTeX distribution. The R-ecosystem
+default is `tinytex::install_tinytex()`, which the driver expects.
+Any system TeX Live with `pdflatex` on `PATH` also works.
 
 ## Benchmark inputs
 
