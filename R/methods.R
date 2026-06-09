@@ -1,3 +1,21 @@
+## Build a short, printable label for an fbrglm object's family. The
+## `family` slot may be a character string or a glm `family` object
+## (which is a list); reach for `family_name` first and fall back
+## safely so cat()/print() never see a raw list.
+.fbrglm_family_label <- function(object) {
+    if (!is.null(object$family_name) &&
+        is.character(object$family_name) &&
+        length(object$family_name) == 1L) {
+        return(object$family_name)
+    }
+    fam <- object$family
+    if (is.character(fam) && length(fam) >= 1L) return(fam[1])
+    if (inherits(fam, "family") && is.character(fam$family)) {
+        return(fam$family)
+    }
+    "<family>"
+}
+
 ## Align a design matrix `X` to a target column layout.
 ##
 ## Missing columns (present in `target_cols` but not in `X`) are added
@@ -40,7 +58,7 @@ print.fbrglm <- function(x, ...) {
         cat("\nCall:\n")
         print(x$call)
     }
-    cat("\nFamily:        ", x$family, "\n", sep = "")
+    cat("\nFamily:        ", .fbrglm_family_label(x), "\n", sep = "")
     cat("Alpha:         ", x$alpha, "\n", sep = "")
     cat("Lambda rule:   ", x$lambda_rule, "\n", sep = "")
     cat("Lambda value:  ", format(x$lambda_value), "\n", sep = "")
@@ -63,7 +81,7 @@ summary.fbrglm <- function(object, ...) {
     structure(
         list(
             call = object$call,
-            family = object$family,
+            family = .fbrglm_family_label(object),
             infer = object$infer,
             selection_frac = object$selection_frac,
             coefficients = object$coefficients,
@@ -85,7 +103,7 @@ print.summary.fbrglm <- function(x, ...) {
         cat("\nCall:\n")
         print(x$call)
     }
-    cat("\nFamily:        ", x$family, "\n", sep = "")
+    cat("\nFamily:        ", .fbrglm_family_label(x), "\n", sep = "")
     cat("Lambda method: ", x$lambda_method, "\n", sep = "")
     cat("Lambda value:  ", format(x$lambda_value), "\n", sep = "")
     cat("Inference:     ", x$infer, "\n", sep = "")
@@ -167,13 +185,15 @@ predict.fbrglm <- function(object,
         pred_args$newoffset <- as.numeric(newoffset)
     }
 
+    fam_name <- .fbrglm_family_label(object)
+
     if (type == "class") {
-        if (!object$family %in% c("binomial", "multinomial")) {
+        if (!fam_name %in% c("binomial", "multinomial")) {
             stop(sprintf(
                 "type = 'class' is valid only for binomial / multinomial; got '%s'.",
-                object$family), call. = FALSE)
+                fam_name), call. = FALSE)
         }
-        if (object$family == "binomial") {
+        if (fam_name == "binomial") {
             pred_args$type <- "response"
             prob <- do.call(stats::predict, pred_args)
             return(as.numeric(as.vector(prob) >= 0.5))
@@ -185,7 +205,17 @@ predict.fbrglm <- function(object,
 
     pred_args$type <- type
     pred <- do.call(stats::predict, pred_args)
-    as.vector(pred)
+    ## multinomial / mgaussian return a 3D array (n, k, n_lambda).
+    ## Drop the trailing 1-d slice when we asked for a single lambda.
+    if (length(dim(pred)) == 3L && dim(pred)[3L] == 1L) {
+        ## Default drop = TRUE collapses (n, k, 1) -> (n, k) matrix,
+        ## which is what callers expect for multinomial / mgaussian.
+        pred <- pred[, , 1]
+    }
+    if (is.matrix(pred) && ncol(pred) == 1L) {
+        return(as.vector(pred))
+    }
+    pred
 }
 
 #' @export

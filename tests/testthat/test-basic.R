@@ -13,11 +13,12 @@ test_that("fbrglm() can be called and returns the right class", {
     expect_false(inherits(fit, "glmnet"))
 })
 
-test_that("unsupported family raises an error", {
-    df <- data.frame(y = rnorm(10), x = rnorm(10))
+test_that("unsupported character family raises a helpful error", {
+    df <- data.frame(y = rnorm(10), x1 = rnorm(10), x2 = rnorm(10))
     expect_error(
-        fbrglm(y ~ x, data = df, family = "Gamma"),
-        "not implemented"
+        fbrglm(y ~ x1 + x2, data = df, family = "Banana",
+               lambda = "fix", lambda_value = 0.1),
+        "recognised glmnet character family"
     )
 })
 
@@ -30,18 +31,6 @@ test_that("unsupported infer raises an error", {
     expect_error(
         fbrglm(y ~ x, data = df, family = "gaussian", infer = "split"),
         "not implemented"
-    )
-})
-
-test_that("deferred families error distinctly", {
-    df <- data.frame(y = rnorm(10), x = rnorm(10))
-    expect_error(
-        fbrglm(y ~ x, data = df, family = "multinomial"),
-        "not implemented yet"
-    )
-    expect_error(
-        fbrglm(y ~ x, data = df, family = "cox"),
-        "not implemented yet"
     )
 })
 

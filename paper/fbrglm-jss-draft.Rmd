@@ -525,14 +525,19 @@ land:
   `selection_frac`) and `infer = "selective"`
   [@selectiveInference; @tibshirani2016selective] are the next two
   inference modes.
-- Families: `gaussian`, `binomial`, `poisson` only. Cox-like
-  survival modelling can already be expressed via a *piecewise
-  exponential Poisson* formulation on long-format data with an
-  `interval` factor and `offset(log(exposure))` — see the *Families
-  and model types* vignette. Native `family = "cox"` (with
-  `Surv(time, status) ~ ...` on the LHS), `multinomial`, Gamma, and
-  negative binomial families remain future work and will likely
-  depend on glmnet family-object plumbing in fbrglm.
+- Families: `gaussian`, `binomial`, `poisson` are the core targets;
+  fbrglm also accepts any GLM family object that `glmnet` itself
+  accepts, so `stats::Gamma(link = "log")` and
+  `MASS::negative.binomial(theta = ...)` (fixed θ) work as well.
+  Native Cox (`family = "cox"` with `Surv(time, status) ~ ...`) and
+  the multi-response cases (`multinomial`, `mgaussian`) are supported
+  but marked experimental — basic fit / predict paths work, but the
+  full breadth of usage (Cox strata and ties, multinomial grouped vs
+  ungrouped) has not been exhaustively tested. Joint θ estimation in
+  the spirit of `MASS::glm.nb()` is out of scope. A Cox-like survival
+  fit is also expressible via the *piecewise exponential Poisson*
+  formulation on long-format data; the *Families and model types*
+  vignette walks through both routes side by side.
 - The `x` / `y` direct-matrix entry point is reserved but not yet
   implemented.
 - Larger-scale benchmarks (high-dimensional, slow CV, inference

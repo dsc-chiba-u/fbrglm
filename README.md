@@ -172,13 +172,13 @@ Full list and rationale: `TODO.md`.
 - *Getting started* (`vignette("fbrglm")`) — formula / data, λ
   selection, `predict(type = ...)`, `nobs_info`, factor narrowing,
   offsets.
-- *Families and model types* (`vignette("fbrglm-families")`) — one
-  example per supported model type (linear, logistic, Poisson +
-  offset), and a Cox-like survival example expressed as a
-  **piecewise exponential Poisson model** on long-format data. Native
-  `family = "cox"`, Gamma, and negative binomial are placed in the
-  roadmap and shown only as non-executed code skeletons (they are not
-  yet implemented).
+- *Families and model types* (`vignette("fbrglm-families")`) — worked
+  examples for linear, logistic, Poisson (with offset), Gamma,
+  negative binomial (fixed θ), native Cox (`Surv()` LHS), plus the
+  experimental multinomial and mgaussian paths. Two survival routes
+  are shown explicitly: the **piecewise exponential Poisson** model on
+  long-format data and the **native Cox** path via `family = "cox"`;
+  these are different models and the vignette does not conflate them.
 
 ## Reproducible experiments
 

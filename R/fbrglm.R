@@ -60,24 +60,44 @@ fbrglm <- function(formula,
     if (missing(formula)) stop("`formula` is required.", call. = FALSE)
     if (missing(data)) stop("`data` is required.", call. = FALSE)
 
-    supported_families <- c("gaussian", "binomial", "poisson")
-    deferred_families <- c("multinomial", "cox")
-    family_name <- if (is.function(family)) {
-        deparse(substitute(family))
+    ## --- Resolve family --------------------------------------------
+    ## fbrglm accepts any family value glmnet itself accepts: the six
+    ## canonical character strings and any glm `family` object. Bare
+    ## family generators (e.g. `Gamma` without parentheses) are called
+    ## to obtain a family object. We store both the value passed to
+    ## glmnet (`family`) and a display name (`family_name`) used for
+    ## printing, dispatch, and back-compat.
+    char_known <- c("gaussian", "binomial", "poisson",
+                    "cox", "multinomial", "mgaussian")
+    if (is.character(family)) {
+        family_name <- as.character(family)[1]
+        if (!family_name %in% char_known) {
+            stop(sprintf(
+                "family '%s' is not a recognised glmnet character family. ",
+                family_name),
+                "Known character families: ",
+                paste(char_known, collapse = ", "),
+                ". For other GLM families, pass a family object, e.g. ",
+                "stats::Gamma(link = 'log') or ",
+                "MASS::negative.binomial(theta = 2).",
+                call. = FALSE)
+        }
+        family_for_glmnet <- family_name
     } else if (inherits(family, "family")) {
-        family$family
+        family_name <- family$family
+        family_for_glmnet <- family
+    } else if (is.function(family)) {
+        f_obj <- tryCatch(family(), error = function(e) NULL)
+        if (!inherits(f_obj, "family")) {
+            stop("`family` must be a character string, a family object, ",
+                 "or a function that returns a family object.",
+                 call. = FALSE)
+        }
+        family_name <- f_obj$family
+        family_for_glmnet <- f_obj
     } else {
-        as.character(family)[1]
-    }
-    if (family_name %in% deferred_families) {
-        stop(sprintf(
-            "family '%s' is reserved by the spec but not implemented yet.",
-            family_name), call. = FALSE)
-    }
-    if (!family_name %in% supported_families) {
-        stop(sprintf(
-            "family '%s' is not implemented. Supported: %s.",
-            family_name, paste(supported_families, collapse = ", ")),
+        stop("`family` must be a character string, a family object, ",
+             "or a function that returns a family object.",
              call. = FALSE)
     }
 
@@ -142,7 +162,8 @@ fbrglm <- function(formula,
             call. = FALSE)
     }
 
-    glmnet_args <- list(x = X, y = y_vec, family = family_name, alpha = alpha)
+    glmnet_args <- list(x = X, y = y_vec,
+                        family = family_for_glmnet, alpha = alpha)
     if (!is.null(w_vec)) glmnet_args$weights <- as.numeric(w_vec)
     if (!is.null(o_vec)) glmnet_args$offset <- as.numeric(o_vec)
     extra <- list(...)
@@ -168,9 +189,17 @@ fbrglm <- function(formula,
     } else {
         stats::coef(fit, s = chosen_lambda)
     }
-    co <- as.numeric(co_obj)
-    names(co) <- rownames(co_obj)
-    nonzero <- setdiff(names(co)[co != 0], "(Intercept)")
+    ## Most families return a (sparse) matrix; multinomial / mgaussian
+    ## return a list of matrices. Keep the structure and derive nonzero
+    ## only for the simple matrix case.
+    if (is.list(co_obj) && !inherits(co_obj, "Matrix")) {
+        co <- co_obj
+        nonzero <- character(0)
+    } else {
+        co <- as.numeric(co_obj)
+        names(co) <- rownames(co_obj)
+        nonzero <- setdiff(names(co)[co != 0], "(Intercept)")
+    }
 
     nobs_info <- list(
         n_total = n_total,
@@ -186,7 +215,8 @@ fbrglm <- function(formula,
         contrasts = contrasts_used,
         x_colnames = x_colnames,
         x_train = X,
-        family = family_name,
+        family = family_for_glmnet,
+        family_name = family_name,
         weights = w_vec,
         offset = o_vec,
         alpha = alpha,
