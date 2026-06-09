@@ -11,6 +11,12 @@ Description: Provides a formula-based interface for regularized generalized
     base R's 'glm()'. Handles formula/data input, automatic factor
     encoding, complete-case filtering, and a single 'lambda' selector
     covering 'cv.min', 'cv.1se', and a fixed user-specified value.
+    Accepts character family strings (gaussian, binomial, poisson, cox,
+    multinomial, mgaussian) and any GLM family object the underlying
+    'glmnet' itself accepts, including 'Gamma' and fixed-theta negative
+    binomial via 'MASS::negative.binomial'.
+URL: https://github.com/dsc-chiba-u/fbrglm
+BugReports: https://github.com/dsc-chiba-u/fbrglm/issues
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)

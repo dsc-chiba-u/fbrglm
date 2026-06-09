@@ -28,21 +28,28 @@ fbrglm(
 )
 }
 \arguments{
-\item{formula}{A model formula, e.g. \code{y ~ x1 + x2}.}
+\item{formula}{A model formula, e.g. \code{y ~ x1 + x2}. For Cox a
+\code{survival::Surv(time, status) ~ ...} LHS is accepted; for mgaussian
+the LHS is a matrix expression such as \code{cbind(y1, y2) ~ ...}.}
 
 \item{data}{A data frame containing the variables in \code{formula}.}
 
-\item{family}{One of \code{"gaussian"}, \code{"binomial"}, \code{"poisson"}. Accepted as a
-character string, a family generator (e.g. \code{binomial}), or a family
-object (e.g. \code{binomial()}). \code{"multinomial"} and \code{"cox"} are reserved by
-the spec but not yet implemented and will error.}
+\item{family}{A character string (\code{"gaussian"}, \code{"binomial"},
+\code{"poisson"}, \code{"cox"}, \code{"multinomial"}, \code{"mgaussian"}), a GLM family
+object (e.g. \code{stats::Gamma(link = "log")},
+\code{MASS::negative.binomial(theta = 2)}), or a bare family generator
+(e.g. \code{binomial}) — the same surface \code{glmnet} itself accepts. Cox,
+multinomial, and mgaussian are supported but \strong{experimental} (see
+Details).}
 
 \item{weights}{Optional observation weights, passed to glmnet / cv.glmnet.}
 
-\item{offset}{Optional offset vector, passed to glmnet / cv.glmnet.}
+\item{offset}{Optional offset vector, passed to glmnet / cv.glmnet.
+Reused at predict time when \code{newdata = NULL}; for \code{newdata}, supply
+\code{newoffset} to \code{predict()}.}
 
 \item{infer}{Inference mode: \code{"none"}, \code{"split"}, or \code{"selective"}. Only
-\code{"none"} is implemented in the MVP.}
+\code{"none"} is implemented; the other two error.}
 
 \item{selection_frac}{Selection-share for \code{infer = "split"} (default 0.2).
 Stored only; not yet used.}
@@ -54,16 +61,21 @@ Stored only; not yet used.}
 \item{lambda_value}{Numeric λ used when \code{lambda = "fix"}.}
 
 \item{x, y}{Optional pre-built design matrix and response. Not yet
-supported in the MVP; supply \code{formula} + \code{data} instead.}
+supported; supply \code{formula} + \code{data} instead.}
 
 \item{...}{Additional arguments forwarded to \code{\link[glmnet:glmnet]{glmnet::glmnet()}} /
 \code{\link[glmnet:cv.glmnet]{glmnet::cv.glmnet()}} (\code{nlambda}, \code{nfolds}, \code{standardize}, ...).}
 }
 \value{
-An object of class \code{c("fbrglm", "regularized_glm")} with fields
-\code{coefficients}, \code{lambda_value}, \code{lambda_rule}, \code{nonzero}, \code{fit},
-\code{cv_fit}, \code{terms}, \code{xlevels}, \code{contrasts}, \code{x_colnames}, \code{x_train},
-\code{nobs_info}, \code{rank_info}, etc.
+An object of class \code{c("fbrglm", "regularized_glm")} with
+fields including \code{family} (the value passed to glmnet — a string or
+a family object), \code{family_name} (a short display string), \code{weights},
+\code{offset}, \code{alpha}, \code{lambda_rule}, \code{lambda_value}, \code{infer},
+\code{selection_frac}, \code{fit} (the underlying \code{glmnet} object), \code{cv_fit}
+(\code{cv.glmnet}, or \code{NULL} for \code{lambda = "fix"}), \code{coefficients},
+\code{nonzero}, \code{terms}, \code{xlevels}, \code{contrasts}, \code{x_colnames}, \code{x_train},
+\code{nobs_info} (\code{n_total} / \code{n_dropped_missing} / \code{n_used}), and
+\code{rank_info} (\code{rank} / \code{ncol} / \code{rank_deficient} / \code{pivot}).
 }
 \description{
 Fits a regularized generalized linear model with a formula/data interface
@@ -71,8 +83,16 @@ that mirrors base R's \code{\link[stats:glm]{stats::glm()}} while delegating the
 fit to \code{\link[glmnet:glmnet]{glmnet::glmnet()}} / \code{\link[glmnet:cv.glmnet]{glmnet::cv.glmnet()}}.
 }
 \details{
-MVP scope: \code{infer = "none"}, families \code{gaussian} / \code{binomial} / \code{poisson},
-λ rules \code{cv_min} / \code{cv_1se} / \code{fix}. Heavier features (split / selective
-inference, multinomial / cox, rank-deficient column dropping) are tracked
-in \code{TODO.md}.
+Current scope: \code{infer = "none"} only, with the same family argument
+surface as \code{glmnet} itself. The character strings \code{"gaussian"},
+\code{"binomial"}, \code{"poisson"}, \code{"cox"}, \code{"multinomial"}, and \code{"mgaussian"}
+are accepted; so are GLM family objects (e.g.
+\code{stats::Gamma(link = "log")}, \code{MASS::negative.binomial(theta = 2)}).
+Native Cox, multinomial, and mgaussian paths are exercised by the
+tests but marked \strong{experimental}: more unusual usage (Cox strata,
+tie handling, time-varying covariates) is not yet validated. Joint
+θ estimation in the spirit of \code{MASS::glm.nb()} is out of scope; pass
+the desired θ to \code{MASS::negative.binomial()} directly. λ rules are
+\code{cv_min} / \code{cv_1se} / \code{fix}; heavier features (split / selective
+inference, rank-deficient column dropping) are tracked in \code{TODO.md}.
 }

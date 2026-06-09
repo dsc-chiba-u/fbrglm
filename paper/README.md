@@ -63,6 +63,36 @@ figures are referenced with relative paths
 (`../../fbrglm-experiments/results/figures/...`). A more portable build
 would copy the relevant artefacts into `paper/` at render time.
 
+## JSS submission checklist
+
+JSS (Journal of Statistical Software) is the **only** target for this
+manuscript. Reference: <https://www.jstatsoft.org/>. The following
+artefacts will need to be in place at submission time:
+
+1. **Manuscript PDF and source**: the LaTeX class file `jss.cls` is
+   provided by `rticles::jss_article`. The current draft renders to
+   `html_document` because the local environment has no LaTeX engine;
+   before submission, install a LaTeX distribution (e.g.
+   `tinytex::install_tinytex()`), swap the YAML `output:` block in
+   `fbrglm-jss-draft.Rmd` to `rticles::jss_article` (the YAML metadata
+   is already laid out in JSS structure), and re-render. The source
+   Rmd and the `.bib` will be included in the submission alongside the
+   PDF.
+2. **Package source**: `fbrglm` is the package described by the
+   manuscript. Submission requires a clean `R CMD check --as-cran`,
+   which the current source passes (only the two routine
+   `New submission` / `unable to verify current time` NOTEs remain).
+3. **Replication material**: the
+   [`fbrglm-experiments`](https://github.com/dsc-chiba-u/fbrglm-experiments)
+   companion repository provides the smoke tests, small benchmarks,
+   manuscript tables, and figures referenced in the paper. JSS reviewers
+   expect a single-command path from a fresh checkout to the
+   manuscript tables / figures; that path is documented in the
+   experiments README.
+
+Rendered HTML / PDF outputs and the `*_files/` / `*_cache/`
+directories that `knitr` produces are not committed in this repo.
+
 ## What still needs filling in
 
 - Author affiliations, postal address, and ORCID for the JSS author

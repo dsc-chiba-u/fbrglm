@@ -4,35 +4,55 @@
 #' that mirrors base R's [stats::glm()] while delegating the actual penalized
 #' fit to [glmnet::glmnet()] / [glmnet::cv.glmnet()].
 #'
-#' MVP scope: `infer = "none"`, families `gaussian` / `binomial` / `poisson`,
-#' λ rules `cv_min` / `cv_1se` / `fix`. Heavier features (split / selective
-#' inference, multinomial / cox, rank-deficient column dropping) are tracked
-#' in `TODO.md`.
+#' Current scope: `infer = "none"` only, with the same family argument
+#' surface as `glmnet` itself. The character strings `"gaussian"`,
+#' `"binomial"`, `"poisson"`, `"cox"`, `"multinomial"`, and `"mgaussian"`
+#' are accepted; so are GLM family objects (e.g.
+#' `stats::Gamma(link = "log")`, `MASS::negative.binomial(theta = 2)`).
+#' Native Cox, multinomial, and mgaussian paths are exercised by the
+#' tests but marked **experimental**: more unusual usage (Cox strata,
+#' tie handling, time-varying covariates) is not yet validated. Joint
+#' θ estimation in the spirit of `MASS::glm.nb()` is out of scope; pass
+#' the desired θ to `MASS::negative.binomial()` directly. λ rules are
+#' `cv_min` / `cv_1se` / `fix`; heavier features (split / selective
+#' inference, rank-deficient column dropping) are tracked in `TODO.md`.
 #'
-#' @param formula A model formula, e.g. `y ~ x1 + x2`.
+#' @param formula A model formula, e.g. `y ~ x1 + x2`. For Cox a
+#'   `survival::Surv(time, status) ~ ...` LHS is accepted; for mgaussian
+#'   the LHS is a matrix expression such as `cbind(y1, y2) ~ ...`.
 #' @param data A data frame containing the variables in `formula`.
-#' @param family One of `"gaussian"`, `"binomial"`, `"poisson"`. Accepted as a
-#'   character string, a family generator (e.g. `binomial`), or a family
-#'   object (e.g. `binomial()`). `"multinomial"` and `"cox"` are reserved by
-#'   the spec but not yet implemented and will error.
+#' @param family A character string (`"gaussian"`, `"binomial"`,
+#'   `"poisson"`, `"cox"`, `"multinomial"`, `"mgaussian"`), a GLM family
+#'   object (e.g. `stats::Gamma(link = "log")`,
+#'   `MASS::negative.binomial(theta = 2)`), or a bare family generator
+#'   (e.g. `binomial`) — the same surface `glmnet` itself accepts. Cox,
+#'   multinomial, and mgaussian are supported but **experimental** (see
+#'   Details).
 #' @param weights Optional observation weights, passed to glmnet / cv.glmnet.
 #' @param offset Optional offset vector, passed to glmnet / cv.glmnet.
+#'   Reused at predict time when `newdata = NULL`; for `newdata`, supply
+#'   `newoffset` to `predict()`.
 #' @param infer Inference mode: `"none"`, `"split"`, or `"selective"`. Only
-#'   `"none"` is implemented in the MVP.
+#'   `"none"` is implemented; the other two error.
 #' @param selection_frac Selection-share for `infer = "split"` (default 0.2).
 #'   Stored only; not yet used.
 #' @param alpha Elastic-net mixing parameter, passed to glmnet.
 #' @param lambda λ-selection rule: `"cv_min"`, `"cv_1se"`, or `"fix"`.
 #' @param lambda_value Numeric λ used when `lambda = "fix"`.
 #' @param x,y Optional pre-built design matrix and response. Not yet
-#'   supported in the MVP; supply `formula` + `data` instead.
+#'   supported; supply `formula` + `data` instead.
 #' @param ... Additional arguments forwarded to [glmnet::glmnet()] /
 #'   [glmnet::cv.glmnet()] (`nlambda`, `nfolds`, `standardize`, ...).
 #'
-#' @return An object of class `c("fbrglm", "regularized_glm")` with fields
-#'   `coefficients`, `lambda_value`, `lambda_rule`, `nonzero`, `fit`,
-#'   `cv_fit`, `terms`, `xlevels`, `contrasts`, `x_colnames`, `x_train`,
-#'   `nobs_info`, `rank_info`, etc.
+#' @return An object of class `c("fbrglm", "regularized_glm")` with
+#'   fields including `family` (the value passed to glmnet — a string or
+#'   a family object), `family_name` (a short display string), `weights`,
+#'   `offset`, `alpha`, `lambda_rule`, `lambda_value`, `infer`,
+#'   `selection_frac`, `fit` (the underlying `glmnet` object), `cv_fit`
+#'   (`cv.glmnet`, or `NULL` for `lambda = "fix"`), `coefficients`,
+#'   `nonzero`, `terms`, `xlevels`, `contrasts`, `x_colnames`, `x_train`,
+#'   `nobs_info` (`n_total` / `n_dropped_missing` / `n_used`), and
+#'   `rank_info` (`rank` / `ncol` / `rank_deficient` / `pivot`).
 #' @aliases print.fbrglm summary.fbrglm predict.fbrglm coef.fbrglm
 #'   nobs.fbrglm plot.fbrglm print.summary.fbrglm
 #' @importFrom stats nobs coef predict
