@@ -153,6 +153,29 @@ fit_na$nobs_info
 nobs(fit_na)
 ```
 
+## Offsets
+
+`offset` at fit time goes through to `glmnet()`; at predict time, pass
+`newoffset` of matching length. With `newdata = NULL` the stored
+training offset is reused; with `newdata` supplied, an explicit
+`newoffset` is required.
+
+```{r}
+n_off <- 80
+dat_off <- data.frame(
+    y  = rbinom(n_off, 1, 0.5),
+    x1 = rnorm(n_off),
+    x2 = rnorm(n_off)
+)
+fit_off <- fbrglm(y ~ x1 + x2, data = dat_off, family = "binomial",
+                  offset = rep(0.2, n_off),
+                  lambda = "fix", lambda_value = 0.05)
+
+head(predict(fit_off, type = "response"))                  # reuses training offset
+head(predict(fit_off, newdata = dat_off[1:5, ],
+             newoffset = rep(0.2, 5), type = "response"))
+```
+
 ## Reaching the underlying `glmnet` objects
 
 If you need to use a `glmnet`-specific tool, two accessors get you out

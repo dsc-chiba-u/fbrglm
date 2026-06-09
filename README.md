@@ -163,7 +163,6 @@ the non-zero terms plus complete-case bookkeeping. Honest inference
   on the LHS).
 - QR-pivot column dropping for rank-deficient designs (currently a
   warning plus `fit$rank_info`; offending columns are not yet dropped).
-- `offset` plumbed through `predict()` (`newoffset`).
 - Vignette and CI (R-CMD-check + test-coverage on GitHub Actions).
 
 Full list and rationale: `TODO.md`.

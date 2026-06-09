@@ -108,6 +108,7 @@ print.summary.fbrglm <- function(x, ...) {
 predict.fbrglm <- function(object,
                            newdata = NULL,
                            type = c("link", "response", "class"),
+                           newoffset = NULL,
                            ...) {
     type <- match.arg(type)
 
@@ -130,12 +131,41 @@ predict.fbrglm <- function(object,
         X <- .fbrglm_align_x(X, object$x_colnames)
     }
 
+    ## --- offset handling --------------------------------------------
+    ## If the model was fit with an offset:
+    ##   newdata = NULL  -> reuse the stored training offset (unless the
+    ##                      caller passed their own newoffset)
+    ##   newdata != NULL -> caller must supply newoffset
+    fit_had_offset <- !is.null(object$offset)
+    if (fit_had_offset) {
+        if (is.null(newdata)) {
+            if (is.null(newoffset)) {
+                newoffset <- as.numeric(object$offset)
+            }
+        } else if (is.null(newoffset)) {
+            stop("This model was fit with an offset; provide ",
+                 "`newoffset` for prediction with newdata.",
+                 call. = FALSE)
+        }
+    }
+    if (!is.null(newoffset) && length(newoffset) != nrow(X)) {
+        stop(sprintf(
+            "`newoffset` length (%d) does not match the number of prediction rows (%d).",
+            length(newoffset), nrow(X)
+        ), call. = FALSE)
+    }
+
     fit_for_predict <- if (!is.null(object$cv_fit)) {
         object$cv_fit
     } else {
         object$fit
     }
     s <- object$lambda_value
+
+    pred_args <- list(object = fit_for_predict, newx = X, s = s)
+    if (!is.null(newoffset)) {
+        pred_args$newoffset <- as.numeric(newoffset)
+    }
 
     if (type == "class") {
         if (!object$family %in% c("binomial", "multinomial")) {
@@ -144,16 +174,17 @@ predict.fbrglm <- function(object,
                 object$family), call. = FALSE)
         }
         if (object$family == "binomial") {
-            prob <- stats::predict(fit_for_predict, newx = X, s = s,
-                                   type = "response")
+            pred_args$type <- "response"
+            prob <- do.call(stats::predict, pred_args)
             return(as.numeric(as.vector(prob) >= 0.5))
         }
-        raw <- stats::predict(fit_for_predict, newx = X, s = s,
-                              type = "class")
+        pred_args$type <- "class"
+        raw <- do.call(stats::predict, pred_args)
         return(as.vector(raw))
     }
 
-    pred <- stats::predict(fit_for_predict, newx = X, s = s, type = type)
+    pred_args$type <- type
+    pred <- do.call(stats::predict, pred_args)
     as.vector(pred)
 }
 

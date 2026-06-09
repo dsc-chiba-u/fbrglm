@@ -327,6 +327,85 @@ test_that("plot.fbrglm errors when no fit is attached", {
     expect_error(plot(fake), "no glmnet")
 })
 
+test_that("predict respects offset when newdata is NULL", {
+    set.seed(90)
+    n <- 100
+    df <- data.frame(y  = rbinom(n, 1, 0.5),
+                     x1 = rnorm(n), x2 = rnorm(n))
+    off <- rnorm(n, sd = 0.3)
+    fit <- fbrglm(y ~ x1 + x2, data = df, family = "binomial",
+                  offset = off,
+                  lambda = "fix", lambda_value = 0.05)
+    pred <- predict(fit, type = "response")
+    expect_length(pred, n)
+    expect_true(all(pred >= 0 & pred <= 1))
+})
+
+test_that("predict errors when offset model is given newdata without newoffset", {
+    set.seed(91)
+    n <- 100
+    df <- data.frame(y  = rbinom(n, 1, 0.5),
+                     x1 = rnorm(n), x2 = rnorm(n))
+    off <- rnorm(n, sd = 0.3)
+    fit <- fbrglm(y ~ x1 + x2, data = df, family = "binomial",
+                  offset = off,
+                  lambda = "fix", lambda_value = 0.05)
+    nd <- data.frame(x1 = rnorm(10), x2 = rnorm(10))
+    expect_error(predict(fit, newdata = nd, type = "response"),
+                 "newoffset")
+})
+
+test_that("predict works on newdata with matching newoffset", {
+    set.seed(92)
+    n <- 100
+    df <- data.frame(y  = rbinom(n, 1, 0.5),
+                     x1 = rnorm(n), x2 = rnorm(n))
+    off <- rnorm(n, sd = 0.3)
+    fit <- fbrglm(y ~ x1 + x2, data = df, family = "binomial",
+                  offset = off,
+                  lambda = "fix", lambda_value = 0.05)
+    nd <- data.frame(x1 = rnorm(10), x2 = rnorm(10))
+    new_off <- rnorm(10, sd = 0.3)
+    pred <- predict(fit, newdata = nd, newoffset = new_off,
+                    type = "response")
+    expect_length(pred, 10)
+    expect_true(all(pred >= 0 & pred <= 1))
+})
+
+test_that("predict errors when newoffset length is wrong", {
+    set.seed(93)
+    n <- 100
+    df <- data.frame(y  = rbinom(n, 1, 0.5),
+                     x1 = rnorm(n), x2 = rnorm(n))
+    off <- rnorm(n, sd = 0.3)
+    fit <- fbrglm(y ~ x1 + x2, data = df, family = "binomial",
+                  offset = off,
+                  lambda = "fix", lambda_value = 0.05)
+    nd <- data.frame(x1 = rnorm(10), x2 = rnorm(10))
+    expect_error(
+        predict(fit, newdata = nd, newoffset = rnorm(5),
+                type = "response"),
+        "newoffset"
+    )
+})
+
+test_that("type='class' respects newoffset", {
+    set.seed(94)
+    n <- 100
+    df <- data.frame(y  = rbinom(n, 1, 0.5),
+                     x1 = rnorm(n), x2 = rnorm(n))
+    off <- rnorm(n, sd = 0.3)
+    fit <- fbrglm(y ~ x1 + x2, data = df, family = "binomial",
+                  offset = off,
+                  lambda = "fix", lambda_value = 0.05)
+    nd <- data.frame(x1 = rnorm(10), x2 = rnorm(10))
+    new_off <- rnorm(10, sd = 0.3)
+    pred <- predict(fit, newdata = nd, newoffset = new_off,
+                    type = "class")
+    expect_length(pred, 10)
+    expect_true(all(pred %in% c(0, 1)))
+})
+
 test_that("coef() returns the named coefficient vector", {
     set.seed(11)
     n <- 80
