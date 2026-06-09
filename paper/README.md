@@ -58,11 +58,21 @@ would copy the relevant artefacts into `paper/` at render time.
 
 ## What still needs filling in
 
-- Author affiliations and ORCIDs for JSS author block
+- Author affiliations, postal address, and ORCID for the JSS author
+  block
 - Submission date
 - All `TODO:` markers in `fbrglm-jss-draft.Rmd` (e.g. cited
-  practitioner papers, hardware/R-version footnote)
-- Every package citation in `references.bib` whose `note` field begins
-  with `TODO:` — run `citation("<pkg>")` in R and update with the
-  authoritative metadata before submission. Do **not** fabricate
+  practitioner papers, hardware / R-version footnote)
+- `references.bib` entries still marked `TODO`:
+  - `selectiveInference` Manual entry — install the package, then run
+    `citation("selectiveInference")` and replace the placeholder
+    fields.
+  - `tibshirani2016selective` — verify volume, number, and pagination
+    against the published JASA version.
+
+  All other package citations (R, glmnet, glmnetUtils, parsnip,
+  workflows, recipes, hardhat, broom) were generated from
+  `citation()` in the local fbrglm-dev environment. Re-run
+  `citation("<pkg>")` and update the version note when the manuscript
+  is rebuilt against a newer package set. Do **not** fabricate
   citation fields.
