@@ -83,6 +83,11 @@ set.seed(20260101)
 <style>
 table { font-size: 85%; border-collapse: collapse; }
 th, td { padding: 3px 8px; vertical-align: top; }
+/* Keep section headings glued to the content that follows so example
+   subsections (4.1, 4.2, ...) don't get separated from their code
+   blocks under WeasyPrint pagination. */
+h2, h3 { page-break-after: avoid; break-after: avoid; }
+pre, table { page-break-inside: avoid; break-inside: avoid; }
 </style>
 
 # Introduction
@@ -430,11 +435,16 @@ pred_show <- data.frame(
     method = pred_df$method,
     result = pred_df$prediction_under_narrowed_factor_levels,
     burden = pred_df$user_burden,
-    note   = short_note[pred_df$method],
+    ## unname() strips the named-vector names that data.frame() would
+    ## otherwise lift into row.names, which kable would then render as
+    ## a duplicate leading column.
+    note   = unname(short_note[pred_df$method]),
     stringsAsFactors = FALSE
 )
+rownames(pred_show) <- NULL
 knitr::kable(
     pred_show, format = "html", escape = TRUE,
+    row.names = FALSE,
     col.names = c("method", "result", "burden", "note"),
     align = c("l", "l", "l", "l")
 )
