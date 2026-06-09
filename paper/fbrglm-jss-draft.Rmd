@@ -1,0 +1,329 @@
+---
+title: "fbrglm: A Formula-Based Interface for Regularized Generalized Linear Models in R"
+author:
+  - "Koki Tsuyuzaki (koki.tsuyuzaki@gmail.com)"
+date: "TODO: pin submission date"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+    self_contained: true
+bibliography: references.bib
+link-citations: true
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+    collapse = TRUE,
+    comment  = "#>",
+    fig.width  = 6,
+    fig.height = 4
+)
+exp_dir <- "/home/koki/dev/fbrglm-experiments"
+set.seed(20260101)
+```
+
+> **Build note.** This file is a JSS-style *skeleton* for the fbrglm
+> manuscript. The package `rticles` (which ships the JSS LaTeX class)
+> was not installed in the local R environment, so this draft renders
+> to `html_document` with JSS-flavoured section headings. The structure
+> (Abstract, Introduction, Related work, Design, Usage, Benchmarks,
+> Limitations, Conclusion) follows the JSS template; the YAML can be
+> swapped to `rticles::jss_article` once the class file is available.
+
+## Abstract
+
+`glmnet` [@friedman2010glmnet; @glmnet] is the de-facto regularized
+generalized linear model engine in R, but its interface is built around
+a pre-constructed design matrix and a response vector. Routine
+practitioner concerns — formula and data input, automatic factor
+handling, complete-case filtering, train/test design-matrix
+consistency, and a single λ-selection rule — therefore land on the
+caller, and the gap between `glm()` and `glmnet()` is one of the more
+common sources of subtle prediction-time errors when factor levels
+differ between training and test data. **fbrglm** is a lightweight
+formula-based wrapper around `glmnet` that aims to close this gap
+without committing to a heavier modelling framework: it accepts
+`formula` and `data`, stores the training factor levels on the fit
+object so that prediction reconstructs the design matrix consistently,
+filters incomplete cases with explicit reporting, and exposes the
+underlying `glmnet` and `cv.glmnet` objects for downstream use.
+Current scope is `gaussian` / `binomial` / `poisson` families and
+`infer = "none"`; honest post-selection inference (data splitting,
+selective inference) and additional families are explicitly deferred to
+later milestones.
+
+# Introduction
+
+Base R's `glm()` provides a familiar formula/data interface for
+generalized linear models, automatic handling of factor predictors via
+`model.matrix()`, complete-case filtering through `na.action`, and S3
+methods (`print`, `summary`, `predict`, `coef`, `nobs`, `plot`) that
+applied statisticians and applied researchers rely on. `glmnet`
+[@friedman2010glmnet] adds L1/L2 regularization to this family and is
+extensively used in practice, but its API operates on a
+caller-constructed design matrix `x` and response vector `y`. Several
+ergonomic frictions follow:
+
+- **Factor handling** is delegated to the caller. A common failure
+  mode is that `model.matrix()` applied to a test data frame, in
+  isolation, produces fewer columns than the matrix that was used at
+  fit time when the test factor's levels are narrower than the
+  training factor's, leading to a runtime error from
+  `glmnet::predict()`.
+
+- **Missingness** is not handled. Callers must filter rows themselves;
+  there is no built-in "N rows dropped" report.
+
+- **λ selection** is post-hoc on the `cv.glmnet` object
+  (`$lambda.min`, `$lambda.1se`) or hand-supplied; the wrapper code
+  needed to thread a single choice through fit, predict, and report is
+  rewritten everywhere.
+
+A goal of fbrglm is to package these conveniences into a wrapper that
+*feels like `glm()`* and otherwise stays out of the way: no new
+modelling abstraction, no new pipe, no opinion on inference.
+
+> TODO: cite practitioner papers / textbook treatments that motivate the
+> ergonomic gap between `glm()` and `glmnet()`.
+
+# Related work
+
+The R ecosystem already contains several attempts at bridging
+`glm()`-style ergonomics with `glmnet`:
+
+- **glmnetUtils** [@glmnetUtils] provides `glmnet(formula, data)` and
+  `cv.glmnet(formula, data)` wrappers and a predict path that accepts
+  `newdata`. It is the closest alternative in spirit to fbrglm.
+- **tidymodels** — and specifically the **parsnip**, **workflows**,
+  **recipes**, and **hardhat** packages [@parsnip; @workflows;
+  @recipes; @hardhat] — offers a composable modelling framework in
+  which `glmnet` is exposed through `logistic_reg() %>%
+  set_engine("glmnet")`. The preprocessing of formulas and factors is
+  handled by `hardhat` / `recipes`.
+- **broom** [@broom] adds a tidy-output layer over many model
+  objects, including `glmnet`.
+- **selectiveInference** [@selectiveInference; @tibshirani2016selective]
+  is the canonical R toolkit for honest post-selection inference;
+  fbrglm reserves `infer = "selective"` as a hook for delegating to it
+  in a future release.
+
+fbrglm differs from these in scope: it is a single-purpose `glm()`-like
+wrapper around `glmnet`, not a modelling framework. It does not bring a
+preprocessing graph, recipes, tuning grids, or a tidy verbs vocabulary.
+
+> TODO: position fbrglm against `parsnip::logistic_reg + glmnet engine`
+> at greater length once a working manuscript draft exists.
+
+# Design and implementation
+
+## `fbrglm()` interface
+
+The user-facing entry point mirrors `stats::glm()`:
+
+```r
+fbrglm(
+    formula, data,
+    family = c("gaussian", "binomial", "poisson"),
+    weights = NULL, offset = NULL,
+    infer  = c("none", "split", "selective"),
+    selection_frac = 0.2,
+    alpha = 1,
+    lambda = c("cv_min", "cv_1se", "fix"),
+    lambda_value = NULL,
+    x = NULL, y = NULL,
+    ...
+)
+```
+
+Arguments not native to `glmnet` (`infer`, `selection_frac`) are
+recognised but only `infer = "none"` is implemented. `weights` and
+`offset` are plumbed through to `glmnet()` / `cv.glmnet()`; the
+underlying `lambda` rule decides which engine is called.
+
+## Object structure
+
+A fitted `fbrglm` object is a list of class
+`c("fbrglm", "regularized_glm")` carrying, among other fields:
+
+- `terms`, `xlevels`, `contrasts`, `x_colnames`, `x_train` — everything
+  needed to rebuild a model matrix consistent with the training fit.
+- `fit` (the underlying `glmnet` object) and `cv_fit` (`cv.glmnet`, or
+  `NULL` for `lambda = "fix"`).
+- `coefficients`, `nonzero`, `lambda_value`, `lambda_rule`.
+- `nobs_info` (`n_total` / `n_dropped_missing` / `n_used`).
+- `rank_info` (`rank` / `ncol` / `rank_deficient` / `pivot`).
+
+## Prediction-time model matrix reconstruction
+
+`predict.fbrglm` calls `model.frame(Terms, newdata, xlev = object$xlevels)`
+and `model.matrix(Terms, mf, contrasts.arg = object$contrasts)` to
+re-encode `newdata`. Internally, a helper aligns the resulting matrix
+to `object$x_colnames` by:
+
+1. padding missing columns with zeros,
+2. dropping any extra columns,
+3. reordering to the training layout.
+
+Novel (unseen) factor levels are rejected upstream by `model.frame`.
+
+## λ selection
+
+`lambda = "cv_min"` and `"cv_1se"` go through `glmnet::cv.glmnet()`;
+`"fix"` skips CV and goes through `glmnet::glmnet(lambda = lambda_value)`.
+The numeric λ actually used is always recorded in
+`fit$lambda_value`.
+
+## `nobs_info` and `rank_info`
+
+Complete-case filtering happens via `model.frame(..., na.action = na.omit)`,
+with the dropped count surfaced both as a one-line message and as the
+`nobs_info` triple. Rank deficiency is detected with `qr()` and
+recorded in `rank_info$rank_deficient`; rank-deficient columns are
+**not** dropped in the MVP (a warning is emitted instead).
+
+## `as_glmnet()` / `as_cv_glmnet()`
+
+These accessors expose the underlying `glmnet` / `cv.glmnet` objects so
+that callers can fall back to any `glmnet`-specific tooling without
+unwrapping the fbrglm object by hand.
+
+# Usage examples
+
+## Binomial fit
+
+```{r}
+library(fbrglm)
+set.seed(1)
+n <- 150
+dat <- data.frame(
+    y  = rbinom(n, 1, 0.5),
+    x1 = rnorm(n), x2 = rnorm(n), x3 = rnorm(n)
+)
+fit <- fbrglm(y ~ x1 + x2 + x3, data = dat,
+              family = "binomial", lambda = "cv_min")
+fit$lambda_value
+head(predict(fit, type = "response"))
+```
+
+## Factor predictor with narrowed test levels
+
+```{r}
+set.seed(2)
+train <- data.frame(
+    y  = rbinom(200, 1, 0.5),
+    x1 = rnorm(200),
+    g  = factor(sample(c("A", "B", "C"), 200, replace = TRUE),
+                levels = c("A", "B", "C"))
+)
+fit_f <- fbrglm(y ~ x1 + g, data = train, family = "binomial",
+                lambda = "fix", lambda_value = 0.05)
+test <- data.frame(
+    x1 = rnorm(5),
+    g  = factor(rep(c("A", "B"), length.out = 5),
+                levels = c("A", "B"))   # narrowed levels
+)
+predict(fit_f, newdata = test, type = "response")
+```
+
+## Offset
+
+```{r}
+fit_off <- fbrglm(y ~ x1 + g, data = train, family = "binomial",
+                  offset = rep(0.2, nrow(train)),
+                  lambda = "fix", lambda_value = 0.05)
+head(predict(fit_off, type = "response"))                  # reuses offset
+predict(fit_off,
+        newdata   = train[1:3, ],
+        newoffset = rep(0.2, 3),
+        type = "response")
+```
+
+## Plot
+
+```{r, eval = FALSE}
+plot(fit)   # delegates to plot.cv.glmnet
+```
+
+# Benchmark experiments
+
+Reproducible benchmarks live in the companion repository
+[`fbrglm-experiments`](https://github.com/dsc-chiba-u/fbrglm-experiments).
+The two summary tables below are generated by
+`scripts/30_make_manuscript_tables.R` in that repository and are
+inserted verbatim here.
+
+## Prediction-failure benchmark
+
+A binomial dataset is split so that the training factor `g` has levels
+`A / B / C / D` while the test factor's *levels* are narrowed to
+`A / B`. Each method's behaviour is recorded.
+
+```{r prediction-table, results = "asis", echo = FALSE}
+cat(readLines(file.path(exp_dir, "results", "summary",
+                         "manuscript_prediction_table.md")),
+    sep = "\n")
+```
+
+![Prediction-failure benchmark](../../fbrglm-experiments/results/figures/prediction_failures_small.png)
+
+## Runtime benchmark
+
+Fit + predict wall-clock on a small grid of `(n, p_numeric, n_factor,
+n_levels)` combinations, fixed λ = 0.05, median of 5 iterations via
+`bench::mark()`.
+
+```{r runtime-table, results = "asis", echo = FALSE}
+cat(readLines(file.path(exp_dir, "results", "summary",
+                         "manuscript_runtime_table.md")),
+    sep = "\n")
+```
+
+![Runtime benchmark](../../fbrglm-experiments/results/figures/runtime_small.png)
+
+The numbers in these tables are intentionally tiny. The interpretation
+is correspondingly limited: **fbrglm is not faster than raw `glmnet`,
+but occupies a lightweight middle ground between raw `glmnet` and full
+workflow frameworks** in the tested setting. A larger, more rigorous
+benchmark suite is planned.
+
+> TODO: add a hardware / R-version footnote once the benchmark machine
+> is fixed for the submission.
+
+# Limitations and future work
+
+The MVP is deliberately narrow. The roadmap items below are tracked in
+the package `TODO.md` and the manuscript will be expanded as they
+land:
+
+- `infer = "none"` only. `infer = "split"` (data splitting with
+  `selection_frac`) and `infer = "selective"`
+  [@selectiveInference; @tibshirani2016selective] are the next two
+  inference modes.
+- Families: `gaussian`, `binomial`, `poisson` only.
+  `family = "multinomial"` and `family = "cox"` (with
+  `Surv(time, status) ~ ...` on the LHS) are reserved but not
+  implemented.
+- The `x` / `y` direct-matrix entry point is reserved but not yet
+  implemented.
+- Larger-scale benchmarks (high-dimensional, slow CV, inference
+  variants) are pending.
+- CRAN / JSS submission readiness (vignette polish, additional unit
+  tests, CI matrix expansion).
+
+# Conclusion
+
+fbrglm aims to close the API gap between base R's `glm()` and
+`glmnet` with a small, opinion-light wrapper. The MVP delivers
+formula/data input, automatic factor handling, complete-case
+reporting, a single λ-selection argument, S3 methods that mirror
+`glm()`, and direct accessors to the underlying `glmnet` objects.
+The empirical claim from the small benchmark is modest: fbrglm
+introduces a small constant cost over raw `glmnet` (≈ 2–3× in the
+tested setting) and is comparable to `glmnetUtils`, while sitting an
+order of magnitude under the `parsnip` / `workflows` path. Honest
+post-selection inference and additional families remain the headline
+work for the next milestone.
+
+# References
