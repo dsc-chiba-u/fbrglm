@@ -525,10 +525,14 @@ land:
   `selection_frac`) and `infer = "selective"`
   [@selectiveInference; @tibshirani2016selective] are the next two
   inference modes.
-- Families: `gaussian`, `binomial`, `poisson` only.
-  `family = "multinomial"` and `family = "cox"` (with
-  `Surv(time, status) ~ ...` on the LHS) are reserved but not
-  implemented.
+- Families: `gaussian`, `binomial`, `poisson` only. Cox-like
+  survival modelling can already be expressed via a *piecewise
+  exponential Poisson* formulation on long-format data with an
+  `interval` factor and `offset(log(exposure))` — see the *Families
+  and model types* vignette. Native `family = "cox"` (with
+  `Surv(time, status) ~ ...` on the LHS), `multinomial`, Gamma, and
+  negative binomial families remain future work and will likely
+  depend on glmnet family-object plumbing in fbrglm.
 - The `x` / `y` direct-matrix entry point is reserved but not yet
   implemented.
 - Larger-scale benchmarks (high-dimensional, slow CV, inference

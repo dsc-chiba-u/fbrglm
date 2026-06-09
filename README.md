@@ -167,6 +167,19 @@ the non-zero terms plus complete-case bookkeeping. Honest inference
 
 Full list and rationale: `TODO.md`.
 
+## Vignettes
+
+- *Getting started* (`vignette("fbrglm")`) — formula / data, λ
+  selection, `predict(type = ...)`, `nobs_info`, factor narrowing,
+  offsets.
+- *Families and model types* (`vignette("fbrglm-families")`) — one
+  example per supported model type (linear, logistic, Poisson +
+  offset), and a Cox-like survival example expressed as a
+  **piecewise exponential Poisson model** on long-format data. Native
+  `family = "cox"`, Gamma, and negative binomial are placed in the
+  roadmap and shown only as non-executed code skeletons (they are not
+  yet implemented).
+
 ## Reproducible experiments
 
 Smoke tests and benchmarks live in a separate repository:

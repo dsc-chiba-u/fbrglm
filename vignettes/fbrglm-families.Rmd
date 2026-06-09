@@ -1,0 +1,261 @@
+---
+title: "Families and model types in fbrglm"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Families and model types in fbrglm}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+    collapse = TRUE,
+    comment  = "#>",
+    fig.width  = 6,
+    fig.height = 4
+)
+set.seed(20260201)
+```
+
+## Overview
+
+`fbrglm` exposes a single formula/data interface for regularized GLMs
+and reuses one set of S3 methods across model types. The common
+operations are:
+
+- `fbrglm(formula, data, family, lambda, ...)`
+- `print()` / `summary()` / `coef()` / `nobs()`
+- `predict(newdata, type = c("link", "response", "class"), newoffset)`
+- `plot()` (delegates to the underlying `glmnet` / `cv.glmnet` plot)
+- `as_glmnet()` / `as_cv_glmnet()`
+
+Classical standard errors, *z* values, and *p* values are **not**
+produced under `infer = "none"` (the only inference mode currently
+implemented). The package returns regularized point estimates;
+inference modes are the next milestone.
+
+```{r setup}
+library(fbrglm)
+```
+
+## Summary of supported model types
+
+| Model                                   | fbrglm formulation                                                                   | Response               | Status               | Note                                                                                                  |
+|-----------------------------------------|--------------------------------------------------------------------------------------|------------------------|----------------------|-------------------------------------------------------------------------------------------------------|
+| Linear regression                       | `family = "gaussian"`                                                                | continuous `y`         | **supported**        | standard Gaussian model                                                                               |
+| Logistic regression                     | `family = "binomial"`                                                                | 0 / 1 `y`              | **supported**        | `predict(type = "response" | "class")`                                                                |
+| Poisson regression                      | `family = "poisson"`                                                                 | count `y`              | **supported**        | offsets supported (`offset =`, `newoffset =`)                                                          |
+| Piecewise exponential survival model    | `family = "poisson"` + interval factor + `offset(log(exposure))`                     | event count / interval | **supported (via formulation)** | Cox-like survival modelling expressed as a Poisson regression on long-format data                      |
+| Native Cox regression                   | `family = "cox"` + `Surv(time, status) ~ ...`                                        | survival object        | not yet implemented  | `glmnet` supports Cox directly; fbrglm needs family-specific predict handling                          |
+| Gamma regression                        | `family = Gamma(link = "log")`                                                       | positive continuous    | future / under investigation | requires glmnet family-object plumbing in fbrglm                                                       |
+| Negative binomial regression            | `family = MASS::negative.binomial(theta = ...)`                                      | overdispersed counts   | future / under investigation | fixed-`theta` may be possible via family object; `theta` estimation (à la `MASS::glm.nb`) is separate |
+
+The remaining sections walk through the four **supported** rows in
+short reproducible examples. The unsupported rows are shown only as
+`eval = FALSE` placeholders at the end.
+
+## Linear regression
+
+```{r linear}
+set.seed(101)
+n <- 150
+dat_lm <- data.frame(
+    y  = 0.5 + 0.8 * rnorm(n) - 0.3 * rnorm(n) + rnorm(n, sd = 0.5),
+    x1 = rnorm(n),
+    x2 = rnorm(n)
+)
+fit_lm <- fbrglm(y ~ x1 + x2, data = dat_lm,
+                 family = "gaussian",
+                 lambda = "fix", lambda_value = 0.05)
+coef(fit_lm)
+head(predict(fit_lm, type = "response"))
+```
+
+## Logistic regression
+
+```{r logistic}
+set.seed(102)
+n <- 200
+dat_logit <- data.frame(
+    y  = rbinom(n, 1, 0.5),
+    x1 = rnorm(n), x2 = rnorm(n)
+)
+fit_logit <- fbrglm(y ~ x1 + x2, data = dat_logit,
+                    family = "binomial",
+                    lambda = "fix", lambda_value = 0.05)
+head(predict(fit_logit, type = "response"))   # probabilities in [0, 1]
+head(predict(fit_logit, type = "class"))      # 0 / 1
+```
+
+## Poisson regression with an offset
+
+A common count-data setup attaches an *exposure* (time, area,
+population) to each row. The Poisson likelihood is written on the
+event count with `log(exposure)` as an additive offset on the linear
+predictor.
+
+```{r poisson}
+set.seed(103)
+n <- 200
+exposure <- runif(n, min = 0.5, max = 2)
+x1 <- rnorm(n); x2 <- rnorm(n)
+rate <- exp(-1 + 0.4 * x1 - 0.2 * x2)
+dat_pois <- data.frame(
+    y  = rpois(n, rate * exposure),
+    x1 = x1, x2 = x2,
+    exposure = exposure
+)
+
+fit_pois <- fbrglm(y ~ x1 + x2, data = dat_pois,
+                   family = "poisson",
+                   offset = log(dat_pois$exposure),
+                   lambda = "fix", lambda_value = 0.05)
+
+new_dat <- dat_pois[1:5, ]
+predict(fit_pois,
+        newdata   = new_dat,
+        newoffset = log(new_dat$exposure),
+        type = "response")
+```
+
+## Piecewise exponential survival model via Poisson regression
+
+A Cox-like survival model can be fit with a Poisson regression on a
+long-format dataset whose rows are *subject* × *time-interval*. The
+construction is:
+
+- split each subject's follow-up time into a small number of
+  intervals;
+- for each interval the subject is at risk in, generate one row with
+  the time at risk (`exposure`), an event indicator (`event`), the
+  interval label (a factor), and the time-fixed covariates;
+- model `event ~ x1 + x2 + interval + offset(log(exposure))` with a
+  Poisson likelihood.
+
+The `interval` factor captures the baseline hazard piecewise; the
+`offset(log(exposure))` accounts for time at risk. With sufficiently
+fine intervals this formulation is closely related to Cox regression
+(the *piecewise exponential* model). It is **not** the same as
+`glmnet`'s native Cox partial likelihood, which fbrglm does not yet
+expose; see the roadmap below.
+
+```{r pwe-data}
+set.seed(104)
+n_subj <- 120
+breaks <- c(0, 1, 2, 3)
+n_int  <- length(breaks) - 1
+
+x1 <- rnorm(n_subj)
+x2 <- rnorm(n_subj)
+rate    <- exp(-1 + 0.4 * x1 - 0.2 * x2)
+T_event <- rexp(n_subj, rate)
+T_cens  <- 3
+T_obs   <- pmin(T_event, T_cens)
+delta   <- as.integer(T_event <= T_cens)
+
+rows <- list()
+for (i in seq_len(n_subj)) {
+    for (j in seq_len(n_int)) {
+        lo <- breaks[j]; hi <- breaks[j + 1]
+        if (T_obs[i] <= lo) next               # subject already left
+        exposure   <- min(T_obs[i], hi) - lo
+        if (exposure <= 0) next
+        event_here <- as.integer(delta[i] == 1L &
+                                 T_obs[i] >  lo &
+                                 T_obs[i] <= hi)
+        rows[[length(rows) + 1]] <- data.frame(
+            id       = i,
+            interval = j,
+            exposure = exposure,
+            event    = event_here,
+            x1       = x1[i],
+            x2       = x2[i]
+        )
+    }
+}
+long_dat <- do.call(rbind, rows)
+long_dat$interval <- factor(long_dat$interval, levels = seq_len(n_int))
+str(long_dat)
+```
+
+```{r pwe-fit}
+fit_pwe <- fbrglm(event ~ x1 + x2 + interval,
+                  data   = long_dat,
+                  family = "poisson",
+                  offset = log(long_dat$exposure),
+                  lambda = "fix", lambda_value = 0.05)
+coef(fit_pwe)
+```
+
+To predict the hazard contribution for a small set of new rows, pass
+the matching `newoffset`:
+
+```{r pwe-predict}
+new_long <- long_dat[1:6, ]
+predict(fit_pwe,
+        newdata   = new_long,
+        newoffset = log(new_long$exposure),
+        type = "response")
+```
+
+The `interval` factor is one-hot encoded by `model.matrix()`; if a
+prediction-time row happens to omit one of the training intervals, the
+corresponding one-hot column is zero-padded by `predict.fbrglm`, as
+described in the *Getting started* vignette.
+
+## Roadmap: native Cox, Gamma, negative binomial
+
+These three are **not implemented** in fbrglm yet. The code below
+shows the intended API only and does not execute.
+
+### Native Cox
+
+`glmnet` supports `family = "cox"` directly, but fbrglm's
+formula/predict pipeline currently has no Cox-specific path
+(`Surv(time, status)` on the LHS, partial-likelihood-aware predict
+types). Native Cox is a planned milestone.
+
+```{r native-cox, eval = FALSE}
+# Reserved but not implemented:
+# fbrglm(Surv(time, status) ~ x1 + x2, data = surv_dat,
+#        family = "cox", lambda = "cv_min")
+```
+
+### Gamma regression
+
+Gamma support depends on glmnet family-object plumbing through
+fbrglm's argument validation and predict path; this is currently
+under investigation.
+
+```{r gamma, eval = FALSE}
+# Under investigation; requires glmnet family-object support in fbrglm:
+# fbrglm(y ~ x1 + x2, data = dat,
+#        family = Gamma(link = "log"),
+#        lambda = "fix", lambda_value = 0.05)
+```
+
+### Negative binomial
+
+A fixed-`theta` negative binomial fit may be achievable via a family
+object once family-object support lands; `theta` estimation in the
+style of `MASS::glm.nb` is a separate problem and is not on the
+immediate roadmap.
+
+```{r negbin, eval = FALSE}
+# Under investigation; fixed-theta only:
+# fbrglm(y ~ x1 + x2, data = dat,
+#        family = MASS::negative.binomial(theta = 2),
+#        lambda = "fix", lambda_value = 0.05)
+```
+
+## Limitations
+
+- The reproducible examples in this vignette are all `gaussian` /
+  `binomial` / `poisson`-based; the piecewise exponential survival
+  example is also a Poisson formulation, **not** native Cox.
+- `infer = "none"` only — no classical standard errors, *z* values,
+  *p* values, or confidence intervals are produced. Honest
+  post-selection inference (`"split"`, `"selective"`) is planned but
+  not implemented.
+- Native Cox (`family = "cox"`), Gamma, multinomial, and negative
+  binomial families are not yet supported; see the package `TODO.md`.
