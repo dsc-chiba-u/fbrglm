@@ -17,10 +17,8 @@ title: "fbrglm: A Formula-Based Interface for Regularized Generalized Linear Mod
 author:
   - name: "Koki Tsuyuzaki"
     affiliation: "Chiba University"
-    address: "TODO: department, postal address, country"
+    address: "1-33 Yayoi-cho, Inage-ku, Chiba 263-8522, Japan"
     email: "koki.tsuyuzaki@gmail.com"
-
-date: "TODO: pin submission date"
 
 abstract: >
   `glmnet` is the de-facto regularized generalized linear model engine in
@@ -293,8 +291,7 @@ regularized fit those quantities are *not* simply IRLS standard errors
 of the regularized coefficients: the shrinkage introduces bias, the
 selection of non-zero terms is data-dependent, and the asymptotic
 calculations break in non-trivial ways. Honest post-selection
-inference (data splitting, selective inference [@selectiveInference;
-@tibshirani2016selective]) is a substantial body of work. fbrglm's
+inference (data splitting, selective inference [@tibshirani2016selective]) is a substantial body of work. fbrglm's
 position is to refuse to produce classical SE / z / p / CI under
 `infer = "none"` rather than report numbers that look like the glm()
 output but mean something different.
@@ -913,8 +910,9 @@ loss is reported), and it does **not** sweep hyperparameters; every
 method is run at the same fixed λ on identical inputs. Broader claims
 ("which package is faster overall", "which package generalises
 better") would require a larger, hold-out-driven study and are out of
-scope here. *(Hardware and R-version footnote to be added at
-submission.)*
+scope here. The numbers reported below were collected with R 4.5.3 on
+Linux; exact package versions are pinned in the companion
+repository's `environment.yml`.
 
 ## The three benchmark scripts
 
@@ -1135,8 +1133,8 @@ in the package `TODO.md`.
 
 - **Honest inference.** Only `infer = "none"` is implemented.
   `infer = "split"` (data splitting with `selection_frac`) and
-  `infer = "selective"` [@selectiveInference;
-  @tibshirani2016selective] are the next two inference modes. No
+  `infer = "selective"` [@tibshirani2016selective] are the next two
+  inference modes. No
   classical SE / z / p / CI is produced; doing so naively for a
   regularized estimator would be misleading.
 - **Negative binomial θ.** Fixed-θ NB works via the family object
