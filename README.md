@@ -178,13 +178,21 @@ Currently it contains:
   `glmnet` parity at fixed λ, `cv.glmnet` parity at `cv_min` / `cv_1se`,
   factor newdata, complete-case bookkeeping)
 - a prediction-failure benchmark for train/test factor-level mismatch
-- a small runtime benchmark against `glmnet` and `glmnetUtils`
+- a small runtime benchmark
 - generated plots for both benchmarks
 
-Headline result from the prediction-failure benchmark: fbrglm preserves
-the training-time design-matrix structure during prediction, avoiding a
-common naive `glmnet` failure when factor levels differ between train
-and test data.
+Comparison methods covered in the small benchmarks:
+
+- raw `glmnet`
+- `glmnetUtils`
+- `parsnip` / `workflows` with the `glmnet` engine
+
+Headline observation in the prediction-failure benchmark (small synthetic
+data, narrowed test factor levels): raw `glmnet` can fail when train and
+test design matrices are built naively. `parsnip` / `workflows` also
+handles the narrowed-level case, but with higher runtime overhead in the
+tested setting. `fbrglm` aims to provide a lighter-weight glm-like
+interface with prediction-time design-matrix consistency.
 
 ## License
 

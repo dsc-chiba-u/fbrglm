@@ -208,6 +208,11 @@ The MVP is deliberately narrow:
   so naively for regularized estimators would be misleading; honest
   inference is the next milestone.
 
-Reproducible benchmarks against `glmnet` and `glmnetUtils` live in a
+Reproducible benchmarks against raw `glmnet`, `glmnetUtils`, and a
+`parsnip` / `workflows` pipeline with the `glmnet` engine live in a
 separate repository:
-<https://github.com/dsc-chiba-u/fbrglm-experiments>.
+<https://github.com/dsc-chiba-u/fbrglm-experiments>. In the
+prediction-failure case (narrowed test factor levels), raw `glmnet`
+built naively can fail; `parsnip` / `workflows` succeeds but with
+higher runtime overhead than fbrglm in the tested small-data setting.
+See the experiments repo for the CSVs and figures.
