@@ -128,11 +128,16 @@ fbrglm <- function(formula,
     xlevels <- stats::.getXlevels(Terms, mf)
 
     qrout <- qr(X)
-    rank_info <- list(p = ncol(X), rank = qrout$rank, pivot = qrout$pivot)
-    if (qrout$rank < ncol(X)) {
+    rank_info <- list(
+        rank           = qrout$rank,
+        ncol           = ncol(X),
+        rank_deficient = qrout$rank < ncol(X),
+        pivot          = qrout$pivot
+    )
+    if (rank_info$rank_deficient) {
         warning(sprintf(
             "Design matrix is rank-deficient: rank %d < %d columns. ",
-            qrout$rank, ncol(X)),
+            rank_info$rank, rank_info$ncol),
             "Columns are not dropped in this MVP; see TODO.md.",
             call. = FALSE)
     }

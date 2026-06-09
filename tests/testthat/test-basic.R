@@ -129,6 +129,86 @@ test_that("factor predictor fits successfully", {
     expect_true(any(grepl("^g", fit$x_colnames)))
 })
 
+test_that("rank_info flags rank-deficient designs", {
+    set.seed(40)
+    n <- 80
+    df <- data.frame(
+        y  = rnorm(n),
+        x1 = rnorm(n),
+        x2 = rnorm(n)
+    )
+    df$x3 <- df$x1 + df$x2   # linearly dependent column
+    expect_warning(
+        fit <- fbrglm(y ~ x1 + x2 + x3, data = df, family = "gaussian",
+                      lambda = "fix", lambda_value = 0.1),
+        "rank-deficient"
+    )
+    expect_true(fit$rank_info$rank_deficient)
+    expect_equal(fit$rank_info$ncol, 3L)
+    expect_lt(fit$rank_info$rank, fit$rank_info$ncol)
+    expect_length(fit$rank_info$pivot, 3L)
+})
+
+test_that("rank_info$rank_deficient is FALSE on a healthy design", {
+    set.seed(41)
+    n <- 80
+    df <- data.frame(y = rnorm(n), x1 = rnorm(n), x2 = rnorm(n))
+    fit <- fbrglm(y ~ x1 + x2, data = df, family = "gaussian",
+                  lambda = "fix", lambda_value = 0.1)
+    expect_false(fit$rank_info$rank_deficient)
+    expect_equal(fit$rank_info$rank, fit$rank_info$ncol)
+})
+
+test_that(".fbrglm_align_x pads missing, drops extra, reorders", {
+    X <- matrix(c(10, 20, 30,
+                  40, 50, 60), nrow = 3, byrow = FALSE)
+    colnames(X) <- c("x1", "x_extra")
+    target <- c("x1", "x_missing_1", "x_missing_2")
+    out <- fbrglm:::.fbrglm_align_x(X, target)
+    expect_equal(colnames(out), target)
+    expect_equal(out[, "x1"], c(10, 20, 30))
+    expect_true(all(out[, "x_missing_1"] == 0))
+    expect_true(all(out[, "x_missing_2"] == 0))
+    expect_false("x_extra" %in% colnames(out))
+    expect_equal(nrow(out), 3L)
+})
+
+test_that("predict succeeds when newdata factor has narrowed levels", {
+    set.seed(20)
+    n_train <- 200
+    train <- data.frame(
+        y  = rnorm(n_train),
+        x1 = rnorm(n_train),
+        g  = factor(sample(c("A", "B", "C", "D"), n_train, replace = TRUE),
+                    levels = c("A", "B", "C", "D"))
+    )
+    fit <- fbrglm(y ~ x1 + g, data = train, family = "gaussian",
+                  lambda = "fix", lambda_value = 0.05)
+    train_ncol <- length(fit$x_colnames)
+
+    n_test <- 20
+    test <- data.frame(
+        x1 = rnorm(n_test),
+        ## Narrow levels on purpose: factor only knows about A/B.
+        g  = factor(sample(c("A", "B"), n_test, replace = TRUE),
+                    levels = c("A", "B"))
+    )
+    pred <- predict(fit, newdata = test, type = "response")
+    expect_length(pred, n_test)
+    expect_true(all(is.finite(pred)))
+
+    ## Walk the same internal path predict() takes, to confirm column
+    ## alignment ends up matching the training width even when
+    ## model.matrix() on the narrowed test data is narrower upstream.
+    Terms <- stats::delete.response(fit$terms)
+    mf <- stats::model.frame(Terms, test, xlev = fit$xlevels)
+    Xt <- stats::model.matrix(Terms, mf, contrasts.arg = fit$contrasts)
+    Xt <- Xt[, colnames(Xt) != "(Intercept)", drop = FALSE]
+    Xt <- fbrglm:::.fbrglm_align_x(Xt, fit$x_colnames)
+    expect_equal(ncol(Xt), train_ncol)
+    expect_equal(colnames(Xt), fit$x_colnames)
+})
+
 test_that("predict works when newdata is missing some factor levels", {
     set.seed(2)
     n <- 100

@@ -1,3 +1,23 @@
+## Align a design matrix `X` to a target column layout.
+##
+## Missing columns (present in `target_cols` but not in `X`) are added
+## as all-zero columns; extra columns (present in `X` but not in
+## `target_cols`) are dropped; the result is reordered to match
+## `target_cols` exactly.
+##
+## Novel factor levels are the caller's problem: this helper sees a
+## ready-made matrix and assumes upstream `model.frame(..., xlev = ...)`
+## has already rejected anything that can't be encoded.
+.fbrglm_align_x <- function(X, target_cols) {
+    missing_cols <- setdiff(target_cols, colnames(X))
+    if (length(missing_cols)) {
+        pad <- matrix(0, nrow = nrow(X), ncol = length(missing_cols))
+        colnames(pad) <- missing_cols
+        X <- cbind(X, pad)
+    }
+    X[, target_cols, drop = FALSE]
+}
+
 ## Internal helper: read nobs info from either the new $nobs_info list
 ## or the legacy top-level fields.
 .fbrglm_nobs_info <- function(object) {
@@ -104,13 +124,10 @@ predict.fbrglm <- function(object,
         } else {
             X_full
         }
-        missing_cols <- setdiff(object$x_colnames, colnames(X))
-        if (length(missing_cols)) {
-            stop(sprintf("Missing column(s) in newdata-derived X: %s",
-                         paste(missing_cols, collapse = ", ")),
-                 call. = FALSE)
-        }
-        X <- X[, object$x_colnames, drop = FALSE]
+        ## Pad missing columns with zeros, drop extras, reorder.
+        ## Novel factor levels would already have errored inside
+        ## model.frame() above.
+        X <- .fbrglm_align_x(X, object$x_colnames)
     }
 
     fit_for_predict <- if (!is.null(object$cv_fit)) {
