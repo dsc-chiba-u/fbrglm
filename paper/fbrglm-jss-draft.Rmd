@@ -82,7 +82,31 @@ knitr::opts_chunk$set(
     fig.width  = 6,
     fig.height = 4
 )
-exp_dir <- "/home/koki/dev/fbrglm-experiments"
+## Locate the companion experiments repository. Priority:
+##   1. FBRGLM_EXP_ROOT env var, if set;
+##   2. a sibling directory ../fbrglm-experiments next to the package
+##      checkout (the conventional layout);
+##   3. otherwise leave exp_dir empty and let downstream chunks render
+##      a placeholder rather than fail the build.
+exp_dir <- {
+    e <- Sys.getenv("FBRGLM_EXP_ROOT")
+    if (nzchar(e)) {
+        normalizePath(e, mustWork = FALSE)
+    } else {
+        cand <- normalizePath(file.path("..", "..", "fbrglm-experiments"),
+                              mustWork = FALSE)
+        if (dir.exists(cand)) cand else ""
+    }
+}
+read_or_placeholder <- function(rel, msg) {
+    if (nzchar(exp_dir) && file.exists(file.path(exp_dir, rel))) {
+        utils::read.csv(file.path(exp_dir, rel), stringsAsFactors = FALSE)
+    } else {
+        knitr::asis_output(sprintf(
+            "\n*Benchmark artefact %s not found; set `FBRGLM_EXP_ROOT` to the experiments repo to render this table. %s*\n",
+            rel, msg))
+    }
+}
 set.seed(20260101)
 ```
 
@@ -920,7 +944,7 @@ to `A / B`. Each method's behaviour at predict time is recorded
 
 ```{r prediction-table, echo = FALSE}
 pred_df <- utils::read.csv(
-    file.path(exp_dir, "results", "summary",
+    file.path(exp_dir, "results", "summary",  # nolint
               "manuscript_prediction_table.csv"),
     stringsAsFactors = FALSE
 )
@@ -964,7 +988,7 @@ than raw `glmnet`.
 
 ```{r runtime-table, echo = FALSE}
 rt_df <- utils::read.csv(
-    file.path(exp_dir, "results", "summary",
+    file.path(exp_dir, "results", "summary",  # nolint
               "manuscript_runtime_table.csv"),
     stringsAsFactors = FALSE
 )
@@ -1028,7 +1052,7 @@ are compared (Table 5).
 
 ```{r family-table, echo = FALSE}
 fam_df <- utils::read.csv(
-    file.path(exp_dir, "results", "summary",
+    file.path(exp_dir, "results", "summary",  # nolint
               "manuscript_family_table.csv"),
     stringsAsFactors = FALSE
 )

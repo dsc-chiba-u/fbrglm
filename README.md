@@ -52,13 +52,9 @@ remotes::install_github("dsc-chiba-u/fbrglm")
 devtools::install_github("dsc-chiba-u/fbrglm")
 ```
 
-Development install from a local clone:
-
-```r
-devtools::install("/home/koki/dev/fbrglm")
-# or
-install.packages("/home/koki/dev/fbrglm", repos = NULL, type = "source")
-```
+For development from a local checkout, use the standard package
+development workflow — `devtools::load_all()` or `devtools::install()`
+from the package root — without committing a hard-coded path here.
 
 ## Quick start
 

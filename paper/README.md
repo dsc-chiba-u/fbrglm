@@ -57,11 +57,15 @@ JSS LaTeX template later:
 The Benchmark section of the draft reads markdown tables and PNG
 figures directly from the
 [`fbrglm-experiments`](https://github.com/dsc-chiba-u/fbrglm-experiments)
-repository checked out at `/home/koki/dev/fbrglm-experiments`. The
-absolute path is set once via `exp_dir` at the top of the Rmd; the
-figures are referenced with relative paths
-(`../../fbrglm-experiments/results/figures/...`). A more portable build
-would copy the relevant artefacts into `paper/` at render time.
+checked out separately. Its location is resolved at the top of the
+Rmd in this order: (1) the `FBRGLM_EXP_ROOT` environment variable;
+(2) a sibling directory `../fbrglm-experiments` next to the package
+checkout. If neither resolves, the benchmark tables render an
+inline placeholder note instead of failing the build. The runtime
+figure is referenced via a sibling-relative path
+(`../../fbrglm-experiments/results/figures/runtime_small.png`); for a
+fully portable build, set `FBRGLM_EXP_ROOT` and copy the figure into
+`paper/` at render time.
 
 ## JSS submission checklist
 
