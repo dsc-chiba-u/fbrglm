@@ -19,6 +19,13 @@ paper/
   README.md              # this file
 ```
 
+## Build target
+
+This draft currently renders to `html_document` because the local
+environment has no LaTeX engine. The YAML is already in JSS structure;
+flip the `output:` block (see comments in `fbrglm-jss-draft.Rmd`) and
+install `tinytex` to produce the JSS PDF form from the same source.
+
 ## Building
 
 Rendered HTML / PDF outputs and the `*_files/` and `*_cache/` directories
