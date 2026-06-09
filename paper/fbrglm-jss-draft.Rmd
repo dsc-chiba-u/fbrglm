@@ -80,6 +80,11 @@ exp_dir <- "/home/koki/dev/fbrglm-experiments"
 set.seed(20260101)
 ```
 
+<style>
+table { font-size: 85%; border-collapse: collapse; }
+th, td { padding: 3px 8px; vertical-align: top; }
+</style>
+
 # Introduction
 
 Base R's `glm()` provides a familiar formula/data interface for
@@ -414,9 +419,23 @@ pred_df <- utils::read.csv(
               "manuscript_prediction_table.csv"),
     stringsAsFactors = FALSE
 )
+short_note <- c(
+    "fbrglm"           = "auto alignment",
+    "glmnet_raw_naive" = "column mismatch",
+    "glmnet_raw_safe"  = "manual alignment",
+    "glmnetUtils"      = "failed here",
+    "parsnip_workflow" = "workflow preprocessing"
+)
+pred_show <- data.frame(
+    method = pred_df$method,
+    result = pred_df$prediction_under_narrowed_factor_levels,
+    burden = pred_df$user_burden,
+    note   = short_note[pred_df$method],
+    stringsAsFactors = FALSE
+)
 knitr::kable(
-    pred_df,
-    col.names = c("method", "outcome", "burden", "interpretation"),
+    pred_show, format = "html", escape = TRUE,
+    col.names = c("method", "result", "burden", "note"),
     align = c("l", "l", "l", "l")
 )
 ```
@@ -430,8 +449,10 @@ succeeds when the caller manually aligns design-matrix columns.
 
 Fit + predict wall-clock on a small grid of `(n, p_numeric, n_factor,
 n_levels)` combinations, fixed λ = 0.05, median of 5 iterations from
-`bench::mark()`. `rel.raw` is each row's median divided by the
-`glmnet_raw` median in the same scenario.
+`bench::mark()`. The compact summary below reports `glmnet_raw`'s
+median in milliseconds and the per-scenario ratio of each other
+method's median to it; values larger than 1× are slower than raw
+`glmnet`.
 
 ```{r runtime-table, echo = FALSE}
 rt_df <- utils::read.csv(
@@ -439,20 +460,37 @@ rt_df <- utils::read.csv(
               "manuscript_runtime_table.csv"),
     stringsAsFactors = FALSE
 )
-rt_show <- data.frame(
-    scenario = rt_df$scenario,
-    method   = rt_df$method,
-    ms       = sprintf("%.1f", rt_df$median_ms),
-    rel.raw  = sprintf("%.2fx", rt_df$relative_to_raw_glmnet),
-    stringsAsFactors = FALSE
+scn_order <- unique(rt_df$scenario)
+pick <- function(scn, mthd, col) {
+    rt_df[[col]][rt_df$scenario == scn & rt_df$method == mthd]
+}
+rt_wide <- do.call(rbind, lapply(scn_order, function(scn) {
+    data.frame(
+        scenario      = scn,
+        raw_ms        = sprintf("%.1f", pick(scn, "glmnet_raw",       "median_ms")),
+        fbrglm        = sprintf("%.2fx", pick(scn, "fbrglm",          "relative_to_raw_glmnet")),
+        glmnetUtils   = sprintf("%.2fx", pick(scn, "glmnetUtils",     "relative_to_raw_glmnet")),
+        parsnip       = sprintf("%.2fx", pick(scn, "parsnip_workflow","relative_to_raw_glmnet")),
+        stringsAsFactors = FALSE
+    )
+}))
+knitr::kable(
+    rt_wide, format = "html", escape = TRUE,
+    col.names = c("scenario", "glmnet_raw (ms)",
+                  "fbrglm (× over raw)",
+                  "glmnetUtils (× over raw)",
+                  "parsnip_workflow (× over raw)"),
+    align = c("l", "r", "r", "r", "r")
 )
-knitr::kable(rt_show, align = c("l", "l", "r", "r"))
 ```
 
 Method roles, repeated across scenarios: `glmnet_raw` is the fastest
 matrix API; `fbrglm` is a lightweight formula interface; `glmnetUtils`
 is a formula interface; `parsnip_workflow` is a full workflow
-framework.
+framework. Full per-iteration and per-method rows are available in the
+companion experiments repository under
+`results/raw/runtime_small_raw.csv` and
+`results/summary/runtime_small.csv`.
 
 ![Runtime benchmark across four scenarios; bars are median of five iterations from `bench::mark()`. This is a small benchmark, not a universal performance claim.](../../fbrglm-experiments/results/figures/runtime_small.png)
 
