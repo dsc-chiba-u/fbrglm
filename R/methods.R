@@ -170,5 +170,13 @@ nobs.fbrglm <- function(object, ...) {
 
 #' @export
 plot.fbrglm <- function(x, ...) {
-    stop("plot.fbrglm() is not yet implemented.", call. = FALSE)
+    if (!is.null(x$cv_fit)) {
+        plot(x$cv_fit, ...)
+    } else if (!is.null(x$fit)) {
+        plot(x$fit, ...)
+    } else {
+        stop("plot.fbrglm(): no glmnet / cv.glmnet fit attached to this object.",
+             call. = FALSE)
+    }
+    invisible(x)
 }

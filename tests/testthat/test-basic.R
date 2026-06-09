@@ -291,6 +291,42 @@ test_that("predict type='class' errors for gaussian and poisson", {
     expect_error(predict(fit_p, type = "class"), "class")
 })
 
+test_that("plot.fbrglm delegates for lambda='cv_min' (cv curve)", {
+    set.seed(80)
+    n <- 200
+    df <- data.frame(
+        y  = rnorm(n),
+        x1 = rnorm(n), x2 = rnorm(n), x3 = rnorm(n)
+    )
+    fit <- fbrglm(y ~ x1 + x2 + x3, data = df, family = "gaussian",
+                  lambda = "cv_min")
+    tf <- tempfile(fileext = ".png")
+    grDevices::png(tf)
+    on.exit({ grDevices::dev.off(); unlink(tf) }, add = TRUE)
+    expect_no_error(plot(fit))
+})
+
+test_that("plot.fbrglm delegates for lambda='fix' (glmnet path)", {
+    set.seed(81)
+    n <- 200
+    df <- data.frame(
+        y  = rnorm(n),
+        x1 = rnorm(n), x2 = rnorm(n), x3 = rnorm(n)
+    )
+    fit <- fbrglm(y ~ x1 + x2 + x3, data = df, family = "gaussian",
+                  lambda = "fix", lambda_value = 0.1)
+    tf <- tempfile(fileext = ".png")
+    grDevices::png(tf)
+    on.exit({ grDevices::dev.off(); unlink(tf) }, add = TRUE)
+    expect_no_error(plot(fit))
+})
+
+test_that("plot.fbrglm errors when no fit is attached", {
+    fake <- structure(list(fit = NULL, cv_fit = NULL),
+                      class = c("fbrglm", "regularized_glm"))
+    expect_error(plot(fake), "no glmnet")
+})
+
 test_that("coef() returns the named coefficient vector", {
     set.seed(11)
     n <- 80
