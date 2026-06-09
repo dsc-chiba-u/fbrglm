@@ -169,6 +169,25 @@ the non-zero terms plus complete-case bookkeeping. Honest inference
 
 Full list and rationale: `TODO.md`.
 
+## Reproducible experiments
+
+Smoke tests and benchmarks live in a separate repository:
+<https://github.com/dsc-chiba-u/fbrglm-experiments>.
+
+Currently it contains:
+
+- smoke tests for MVP behavior (gaussian / binomial / poisson basics,
+  `glmnet` parity at fixed λ, `cv.glmnet` parity at `cv_min` / `cv_1se`,
+  factor newdata, complete-case bookkeeping)
+- a prediction-failure benchmark for train/test factor-level mismatch
+- a small runtime benchmark against `glmnet` and `glmnetUtils`
+- generated plots for both benchmarks
+
+Headline result from the prediction-failure benchmark: fbrglm preserves
+the training-time design-matrix structure during prediction, avoiding a
+common naive `glmnet` failure when factor levels differ between train
+and test data.
+
 ## License
 
 MIT — see `LICENSE`.
