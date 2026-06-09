@@ -21,11 +21,15 @@ paper/
 
 ## Building
 
+Rendered HTML / PDF outputs and the `*_files/` and `*_cache/` directories
+that `knitr` produces are **not** tracked in git. Regenerate them from
+the manuscript source:
+
 ```sh
 R -q -e 'rmarkdown::render("paper/fbrglm-jss-draft.Rmd")'
 ```
 
-This produces `paper/fbrglm-jss-draft.html`. To switch to the actual
+This produces `paper/fbrglm-jss-draft.html` (gitignored). To switch to the actual
 JSS LaTeX template later:
 
 1. `install.packages("rticles")`

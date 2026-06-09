@@ -26,3 +26,9 @@ src/*.dll
 environment.yml
 /doc/
 /Meta/
+
+# Rendered manuscript outputs (regenerated from paper/*.Rmd)
+paper/*.html
+paper/*.pdf
+paper/*_files/
+paper/*_cache/
