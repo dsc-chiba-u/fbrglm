@@ -38,7 +38,9 @@ abstract: >
   honest post-selection inference and additional families are deferred
   to later milestones. A small reproducible benchmark suite compares
   fbrglm to raw `glmnet`, `glmnetUtils`, and a `parsnip` /
-  `workflows` pipeline.
+  `workflows` pipeline; in the family-wide parity sweep fbrglm
+  reproduces raw `glmnet` predictions across all eight
+  glmnet-compatible families tested.
 
 keywords:
   - "regularized generalized linear models"
@@ -455,6 +457,52 @@ Both failure rows produce a `glmnet` runtime error of the form
 `parsnip` / `workflows` path both succeed automatically; raw `glmnet`
 succeeds when the caller manually aligns design-matrix columns.
 
+## Family-wide prediction parity
+
+A complementary sanity check sweeps across `glmnet`-compatible
+families to verify that fbrglm's formula/data wrapper does not
+silently change what `glmnet` computes. Eight families — `gaussian`,
+`binomial`, `poisson`, `Gamma` (via `stats::Gamma(link = "log")`),
+fixed-θ negative binomial (via
+`MASS::negative.binomial(theta = ...)`), native Cox (via
+`family = "cox"` with `Surv(time, status) ~ ...`), `multinomial`, and
+`mgaussian` — are each fit at λ = 0.05 with both fbrglm and a
+hand-built raw `glmnet` call on the same data, and the predictions
+are compared.
+
+```{r family-table, echo = FALSE}
+fam_df <- utils::read.csv(
+    file.path(exp_dir, "results", "summary",
+              "manuscript_family_table.csv"),
+    stringsAsFactors = FALSE
+)
+fam_show <- fam_df[, c("family", "response", "fbrglm_vs_glmnet",
+                        "fbrglm_runtime_ms", "raw_glmnet_runtime_ms",
+                        "note")]
+knitr::kable(
+    fam_show, format = "html", escape = TRUE, row.names = FALSE,
+    col.names = c("family", "response", "fbrglm vs raw",
+                  "fbrglm (ms)", "raw (ms)", "note"),
+    align = c("l", "l", "r", "r", "r", "l")
+)
+```
+
+The maximum absolute difference between fbrglm's prediction and the
+raw `glmnet` prediction is zero for every family in the table: the
+wrapper changes the user-facing interface and the prediction-time
+design-matrix handling, but not the optimisation. Two qualifications
+go with the table: the negative binomial entry uses *fixed* θ
+(joint θ estimation in the spirit of `MASS::glm.nb()` is out of
+scope), and the Cox entry exercises glmnet's native partial-likelihood
+Cox route — distinct from the *piecewise exponential Poisson*
+survival formulation walked through in the `fbrglm-families` package
+vignette. `glmnetUtils` is the other formula-based interface that
+succeeded on all eight families; the `parsnip` / `workflows`
+pipeline succeeded on the three families with a same-engine
+equivalent in core parsnip (`gaussian`, `binomial`, `multinomial`)
+and is recorded as "not attempted" elsewhere rather than as a
+failure.
+
 ## Runtime benchmark
 
 Fit + predict wall-clock on a small grid of `(n, p_numeric, n_factor,
@@ -557,7 +605,11 @@ diagnostic information (missing-row counts, rank status, underlying
 claim from the small benchmark is intentionally modest: fbrglm
 introduces a small constant overhead over raw `glmnet` in the tested
 setting and is comparable to `glmnetUtils`, while remaining
-substantially lighter than the `parsnip` / `workflows` path. Whether
+substantially lighter than the `parsnip` / `workflows` path. The
+family-wide parity check confirms that fbrglm reproduces raw `glmnet`
+predictions exactly across all eight glmnet-compatible families
+tested, so the wrapper changes the user interface but not the
+optimisation. Whether
 richer inference modes — data splitting and selective inference — and
 additional families can be added without losing this simplicity is
 the central question of the next milestone.
