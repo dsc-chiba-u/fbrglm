@@ -1,0 +1,26 @@
+# R history / data
+.Rhistory
+.Rapp.history
+.RData
+.Ruserdata
+
+# R session
+.Rproj.user/
+*.Rproj
+
+# Build artifacts
+*.tar.gz
+*.Rcheck/
+src/*.o
+src/*.so
+src/*.dll
+
+# OS / editor
+.DS_Store
+*~
+*.swp
+.vscode/
+.idea/
+
+# Environments (handled in fbrglm-experiments, not here)
+environment.yml

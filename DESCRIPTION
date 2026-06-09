@@ -1,0 +1,24 @@
+Package: fbrglm
+Title: Formula-Based Regularized Generalized Linear Models
+Version: 0.0.1
+Authors@R:
+    person(given = "Koki",
+           family = "Tsuyuzaki",
+           role = c("aut", "cre"),
+           email = "koki.tsuyuzaki@gmail.com")
+Description: Provides a formula-based interface for regularized generalized
+    linear models, wrapping 'glmnet' so it can be used with a feel close to
+    base R's 'glm()'. Handles formula/data input, automatic factor
+    encoding, complete-case filtering, and a single 'lambda' selector
+    covering 'cv.min', 'cv.1se', and a fixed user-specified value.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+Imports:
+    glmnet,
+    stats,
+    graphics
+Suggests:
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
