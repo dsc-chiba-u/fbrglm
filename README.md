@@ -52,10 +52,6 @@ remotes::install_github("dsc-chiba-u/fbrglm")
 devtools::install_github("dsc-chiba-u/fbrglm")
 ```
 
-For development from a local checkout, use the standard package
-development workflow — `devtools::load_all()` or `devtools::install()`
-from the package root — without committing a hard-coded path here.
-
 ## Quick start
 
 ### Gaussian
