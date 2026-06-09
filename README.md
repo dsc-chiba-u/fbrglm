@@ -15,20 +15,49 @@ same `y ~ x1 + x2` you'd write for `glm()` and get a regularized fit back.
 
 ## Status
 
-MVP skeleton — `infer = "none"` only, families `gaussian` / `binomial`
-/ `poisson`. See **Planned** below and `TODO.md` for the deferred work.
+`infer = "none"` only. Family coverage is:
+
+**Core supported** (parity-checked against raw `glmnet`):
+`gaussian`, `binomial`, `poisson`, `Gamma` (via `stats::Gamma(link = "log")`),
+`negative binomial` (via `MASS::negative.binomial(theta = ...)` — **fixed
+θ only**).
+
+**Experimental** (basic fit / predict paths work, breadth of usage not
+exhaustively tested):
+native Cox (`family = "cox"` with `Surv(time, status) ~ ...`),
+`multinomial`, `mgaussian`.
+
+**Out of scope for the MVP**:
+- Joint θ estimation in the style of `MASS::glm.nb()`.
+- Cox-specific extras such as strata, ties handling, and time-varying
+  covariates have not been validated.
+- `infer = "split"` and `infer = "selective"` are planned but not
+  implemented.
+
+See `TODO.md` for the full backlog.
 
 ## Installation
 
+Recommended:
+
 ```r
-# from a local clone (recommended on systems where binary deps misbehave)
-install.packages("/path/to/fbrglm", repos = NULL, type = "source")
+pak::pkg_install("dsc-chiba-u/fbrglm")
+```
 
-# or with devtools
-devtools::install("/path/to/fbrglm")
+Alternative:
 
-# or with pak
-pak::pkg_install("/path/to/fbrglm")
+```r
+remotes::install_github("dsc-chiba-u/fbrglm")
+# or
+devtools::install_github("dsc-chiba-u/fbrglm")
+```
+
+Development install from a local clone:
+
+```r
+devtools::install("/home/koki/dev/fbrglm")
+# or
+install.packages("/home/koki/dev/fbrglm", repos = NULL, type = "source")
 ```
 
 ## Quick start
@@ -122,14 +151,23 @@ the fit actually used is always available as `fit$lambda_value`.
 
 ### `predict(type = ...)`
 
-| `type`       | gaussian | binomial             | poisson           |
-|--------------|----------|----------------------|-------------------|
-| `"link"`     | η        | η (logit)            | η (log)           |
-| `"response"` | η        | probability ∈ [0, 1] | rate, `exp(η)`    |
-| `"class"`    | error    | 0 / 1 (threshold 0.5)| error             |
+For the single-response GLM families (`gaussian`, `binomial`,
+`poisson`, `Gamma`, `negative.binomial`, `cox`):
 
-`"class"` is only valid for binomial in the MVP; gaussian and poisson
-return an error.
+| `type`       | gaussian / Gamma / NB | binomial             | poisson           | cox           |
+|--------------|-----------------------|----------------------|-------------------|---------------|
+| `"link"`     | η                     | η (logit)            | η (log)           | η             |
+| `"response"` | mean (link⁻¹η)        | probability ∈ [0, 1] | rate, `exp(η)`    | rate, `exp(η)`|
+| `"class"`    | error                 | 0 / 1 (threshold 0.5)| error             | error         |
+
+For the multi-response families:
+
+- `multinomial`: `"link"` / `"response"` return an `(n × k)` matrix
+  (one column per class); `"class"` returns the argmax class label.
+- `mgaussian`: `"link"` / `"response"` return an `(n × q)` matrix
+  (one column per response); `"class"` errors.
+
+See `vignette("fbrglm-families")` for worked examples.
 
 ### Complete-case bookkeeping: `nobs_info`
 
@@ -159,11 +197,11 @@ the non-zero terms plus complete-case bookkeeping. Honest inference
 - `infer = "split"` — data splitting with `selection_frac` for honest
   post-selection SEs / p-values / CIs via a base-R `glm()` refit.
 - `infer = "selective"` — selective inference at the chosen λ.
-- `family = "multinomial"` and `family = "cox"` (with `Surv(time, status)`
-  on the LHS).
 - QR-pivot column dropping for rank-deficient designs (currently a
   warning plus `fit$rank_info`; offending columns are not yet dropped).
-- Vignette and CI (R-CMD-check + test-coverage on GitHub Actions).
+- Broader Cox coverage (strata, ties handling, time-varying
+  covariates) and corresponding tests.
+- Joint θ estimation for negative binomial (`MASS::glm.nb()`-style).
 
 Full list and rationale: `TODO.md`.
 
