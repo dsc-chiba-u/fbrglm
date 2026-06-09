@@ -154,11 +154,17 @@ the fit actually used is always available as `fit$lambda_value`.
 For the single-response GLM families (`gaussian`, `binomial`,
 `poisson`, `Gamma`, `negative.binomial`, `cox`):
 
-| `type`       | gaussian / Gamma / NB | binomial             | poisson           | cox           |
-|--------------|-----------------------|----------------------|-------------------|---------------|
-| `"link"`     | η                     | η (logit)            | η (log)           | η             |
-| `"response"` | mean (link⁻¹η)        | probability ∈ [0, 1] | rate, `exp(η)`    | rate, `exp(η)`|
-| `"class"`    | error                 | 0 / 1 (threshold 0.5)| error             | error         |
+| `type`       | gaussian / Gamma / NB | binomial             | poisson           | cox                                |
+|--------------|-----------------------|----------------------|-------------------|------------------------------------|
+| `"link"`     | η                     | η (logit)            | η (log)           | η (linear predictor)               |
+| `"response"` | mean (link⁻¹η)        | probability ∈ [0, 1] | rate, `exp(η)`    | relative risk, `exp(η)`            |
+| `"class"`    | error                 | 0 / 1 (threshold 0.5)| error             | error                              |
+
+Cox predictions are on the linear-predictor / relative-risk scale, not
+absolute hazards. fbrglm does not estimate the baseline hazard;
+absolute survival curves require a separate baseline-hazard step (e.g.
+via `survival::basehaz()` on a `coxph` fit, or an equivalent Breslow
+estimate computed against the `coxnet` linear predictors).
 
 For the multi-response families:
 
