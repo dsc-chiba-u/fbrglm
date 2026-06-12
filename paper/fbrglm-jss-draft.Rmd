@@ -250,17 +250,108 @@ object, re-encoding `newdata` through the same machinery, and padding
 any column whose factor level the test data did not happen to exercise
 with zeros (Section 4).
 
+## Interactions and missing factor levels
+
+Factor narrowing becomes harder to spot once the formula has
+interaction terms. With `y ~ x1 * g`, both the main effect `g` and
+the `x1:g` interaction expand into dummy columns; a level that does
+not appear in the test data therefore drops *two* columns from a
+naively built test design matrix, not one. The expected outcome of
+`predict()` is still a column-aligned scoring that pretends those
+interaction rows have the missing-level contribution zeroed out, not
+an error or a width mismatch:
+
+```{r demo-interaction}
+set.seed(8)
+train_i <- data.frame(
+    y  = rbinom(120, 1, 0.5),
+    x1 = rnorm(120),
+    g  = factor(sample(c("A","B","C"), 120, replace = TRUE),
+                levels = c("A","B","C"))
+)
+test_i <- data.frame(
+    x1 = rnorm(15),
+    g  = factor(sample(c("A","B"), 15, replace = TRUE),
+                levels = c("A","B"))    # narrower than train
+)
+ncol(model.matrix(y ~ x1 * g, train_i)[, -1, drop = FALSE])
+ncol(model.matrix(    ~ x1 * g, test_i )[, -1, drop = FALSE])
+```
+
+The naive matrix construction loses both the `gC` main-effect column
+and the `x1:gC` interaction column at predict time; the user has to
+realign both. fbrglm reuses the stored `terms` and `xlevels` on the
+fit object to construct a test design matrix of the same width as
+the training one, then zero-fills the absent-level columns in one
+pass — main effects and interactions alike.
+
 ## Factor levels and contrasts
 
-A related but more subtle hazard is that two test data frames built
-from the same observations can produce different design matrices
-depending on which factor levels happen to appear and on the active
-`contrasts` setting. For repeated experiments and serialized models
-this is a reproducibility problem more than a "what error did I get"
-problem: the model may silently consume a design matrix it was not
-trained on. fbrglm's response is to store `terms`, `xlevels`, and
-`contrasts` on the fit object and to reuse them — there is no global
-state involved at predict time.
+A related but more subtle hazard is that two design matrices built
+with the same formula on the same data can differ depending on the
+session's `options("contrasts")` setting:
+
+```{r demo-contrasts}
+df_c <- data.frame(
+    y  = rbinom(60, 1, 0.5),
+    x1 = rnorm(60),
+    g  = factor(sample(c("A","B","C"), 60, replace = TRUE),
+                levels = c("A","B","C"))
+)
+opts0 <- options(contrasts = c("contr.treatment", "contr.poly"))
+colnames(model.matrix(y ~ x1 + g, df_c))[-1]   # default
+options(contrasts = c("contr.sum",       "contr.poly"))
+colnames(model.matrix(y ~ x1 + g, df_c))[-1]   # session changed
+options(opts0)
+```
+
+A do-it-yourself `model.matrix()` workflow consumes whatever
+`options("contrasts")` happens to be live in the current R session.
+If the training session and the predict-time session disagree —
+because a different machine, a different `.Rprofile`, or a recently
+attached package changed the global setting — the design matrix
+silently changes its meaning. `glmnet` itself does not inspect
+column names, so the only visible symptom is the prediction having
+quietly become a function of a different parameterisation. fbrglm
+stores the resolved `contrasts` attribute on the fit object and
+reuses it at predict time independently of the active session
+setting, so the encoding is locked in at fit time.
+
+## Distinguishing penalty zero from non-identifiable coefficients
+
+Regularization estimators in their matrix form report every
+coefficient as a number, including coefficients on columns that the
+design cannot identify. A coefficient reported as `0` could mean
+"the penalty shrunk it to zero" or "this column is linearly
+dependent on others and the coefficient is not estimable" — two
+very different statements an applied user routinely wants to
+distinguish.
+
+```{r demo-rank-deficient}
+set.seed(9)
+n_r <- 200
+df_r <- data.frame(
+    x1 = rnorm(n_r),
+    x2 = rnorm(n_r)
+)
+df_r$x3 <- df_r$x1 + df_r$x2                # linearly dependent
+df_r$y  <- rbinom(n_r, 1,
+                  stats::plogis(0.8*df_r$x1 - 0.3*df_r$x2))
+X_r <- as.matrix(df_r[, c("x1", "x2", "x3")])
+glmnet_raw <- glmnet::glmnet(X_r, df_r$y, family = "binomial",
+                              lambda = 0.005)
+as.numeric(coef(glmnet_raw, s = 0.005))
+```
+
+Raw `glmnet` returns a numeric `0` for `x3` — visually identical to
+any coefficient the L1 penalty happened to zero out, with no
+indication that the column was not estimable to begin with.
+`stats::glm()`'s convention is to instead report unidentifiable
+columns as `NA`, which `fbrglm()` follows: the design is run through
+a QR-pivot rank check before being handed to `glmnet`, dependent
+columns are dropped from the fit, and `coef()` reports them as `NA`
+so they cannot be misread as a penalty result (the full mechanism is
+described in Sections 4–5).
 
 ## Complete-case filtering and reproducibility
 
