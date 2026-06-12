@@ -1266,4 +1266,95 @@ the experimental family paths (Cox extensions in particular) can be
 added without losing this simplicity is the central question of the
 next milestone.
 
+# Appendix A: Example S3 method output
+
+For readers who already work with `stats::glm()`, this appendix shows
+the console output produced by `print()`, `summary()`, `coef()`, and
+`predict()` on an `fbrglm` fit, so the layout differences and the
+new safety-oriented elements (rank-deficiency reporting, the
+inference-policy footer, the `on_new_levels` opt-in for novel-level
+prediction) are visible at a glance. The example deliberately
+includes one linearly dependent column so the rank-deficiency
+machinery is exercised; it is small enough to fit in a few lines of
+output.
+
+```{r appendix-fit, message = FALSE}
+set.seed(2026)
+n      <- 200
+x1     <- rnorm(n)
+x2     <- rnorm(n)
+app    <- data.frame(
+    y  = rbinom(n, 1, stats::plogis(0.8 * x1 - 0.5 * x2)),
+    x1 = x1,
+    x2 = x2
+)
+app$x3 <- app$x1 + app$x2        # linearly dependent on x1, x2
+fit_app <- fbrglm(y ~ x1 + x2 + x3, data = app,
+                  family = "binomial",
+                  lambda = "fix", lambda_value = 0.005)
+```
+
+## A.1. summary(fit)
+
+`summary()` follows the same vertical layout as `summary.glm()`,
+with three additions specific to the regularized setting: the
+selected $\lambda$ on the metadata line, a glm-style
+"`(N not defined because of singularities: ...)`" header on the
+coefficient table when the QR-pivot dropped any columns, and a
+standing inference-policy footer that names *why* no standard
+errors, $z$-values, or $p$-values are reported under
+`infer = "none"`.
+
+```{r appendix-summary}
+summary(fit_app)
+```
+
+## A.2. coef(fit)
+
+`coef()` returns a named numeric vector keyed by `(Intercept)` plus
+the full predictor list, with `NA` at any position dropped by the
+QR-pivot — same convention as `coef.glm()`. This lets calling code
+distinguish "shrunk to zero by the penalty" (`0`) from "not
+identifiable from the design" (`NA`) without consulting `rank_info`
+manually.
+
+```{r appendix-coef}
+coef(fit_app)
+```
+
+## A.3. predict(fit) and on_new_levels
+
+`predict()` defaults to `type = "link"`; the binomial example here
+uses `type = "response"` so the output reads on the probability
+scale. With `newdata = NULL`, predictions are produced on the
+training rows directly; with a `newdata` argument, the stored
+`xlevels` / `contrasts` reconstruct a design matrix of the
+fit-time width, after which the dropped columns are removed before
+scoring.
+
+```{r appendix-predict-train}
+head(predict(fit_app, type = "response"), 6)
+```
+
+For prediction pipelines that need to tolerate factor levels
+unseen at fit time (a common production concern), `predict()`
+exposes `on_new_levels = "na"`. The default `"error"` reproduces
+`predict.glm()`'s "factor has new levels" error verbatim, but
+`"na"` substitutes the reference level for novel-level rows,
+scores them, and overwrites those rows' predictions with `NA`,
+emitting a warning that names the affected row count. Constructing
+a small test data frame whose factor we *do* have in this example
+is awkward (the appendix model has no factor), so the call form
+is shown for reference:
+
+```{r appendix-predict-newlevels, eval = FALSE}
+predict(fit_app, newdata = test_df, type = "response",
+        on_new_levels = "na")
+```
+
+`as_glmnet(fit_app)` and `as_cv_glmnet(fit_app)` give back the
+underlying `glmnet` / `cv.glmnet` objects when downstream code needs
+to use a glmnet-specific helper directly. `nobs(fit_app)` returns
+the complete-case row count actually fed to glmnet.
+
 # References
