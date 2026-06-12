@@ -72,6 +72,12 @@ print.fbrglm <- function(x, ...) {
         cat(sprintf("Non-zero terms: %d / %d\n",
                     length(x$nonzero), length(x$x_colnames)))
     }
+    ri <- x$rank_info
+    if (isTRUE(ri$rank_deficient)) {
+        cat(sprintf("Rank deficiency: %d / %d columns dropped (NA in coef): %s\n",
+                    length(ri$dropped_cols), ri$ncol,
+                    paste(ri$dropped_cols, collapse = ", ")))
+    }
     invisible(x)
 }
 
@@ -119,6 +125,13 @@ print.summary.fbrglm <- function(x, ...) {
     } else {
         cat("  (none)\n")
     }
+    ri <- x$rank_info
+    if (isTRUE(ri$rank_deficient)) {
+        cat(sprintf(
+            "\nRank deficiency: %d of %d columns not defined because of singularities (NA in coef):\n",
+            length(ri$dropped_cols), ri$ncol))
+        cat("  ", paste(ri$dropped_cols, collapse = ", "), "\n", sep = "")
+    }
     invisible(x)
 }
 
@@ -147,6 +160,15 @@ predict.fbrglm <- function(object,
         ## Novel factor levels would already have errored inside
         ## model.frame() above.
         X <- .fbrglm_align_x(X, object$x_colnames)
+        ## If the model was fit with rank-deficient drops, restrict
+        ## newdata to the same kept columns the underlying glmnet fit
+        ## actually saw. NA-valued coefficients live in `coefficients`,
+        ## not in the underlying glmnet object.
+        kept_cols <- object$rank_info$kept_cols
+        if (!is.null(kept_cols) &&
+            length(object$rank_info$dropped_cols)) {
+            X <- X[, kept_cols, drop = FALSE]
+        }
     }
 
     ## --- offset handling --------------------------------------------

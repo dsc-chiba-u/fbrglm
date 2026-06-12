@@ -118,7 +118,7 @@ test_that("factor predictor fits successfully", {
     expect_true(any(grepl("^g", fit$x_colnames)))
 })
 
-test_that("rank_info flags rank-deficient designs", {
+test_that("rank-deficient designs auto-drop linearly dependent columns", {
     set.seed(40)
     n <- 80
     df <- data.frame(
@@ -127,15 +127,56 @@ test_that("rank_info flags rank-deficient designs", {
         x2 = rnorm(n)
     )
     df$x3 <- df$x1 + df$x2   # linearly dependent column
-    expect_warning(
+    expect_message(
         fit <- fbrglm(y ~ x1 + x2 + x3, data = df, family = "gaussian",
                       lambda = "fix", lambda_value = 0.1),
-        "rank-deficient"
+        "linearly dependent"
     )
     expect_true(fit$rank_info$rank_deficient)
     expect_equal(fit$rank_info$ncol, 3L)
     expect_lt(fit$rank_info$rank, fit$rank_info$ncol)
     expect_length(fit$rank_info$pivot, 3L)
+    expect_equal(length(fit$rank_info$kept_cols), fit$rank_info$rank)
+    expect_equal(length(fit$rank_info$dropped_cols),
+                 fit$rank_info$ncol - fit$rank_info$rank)
+    expect_setequal(c(fit$rank_info$kept_cols, fit$rank_info$dropped_cols),
+                    fit$x_colnames)
+})
+
+test_that("coef() returns NA at dropped positions and matches full layout", {
+    set.seed(42)
+    n <- 80
+    df <- data.frame(y = rnorm(n), x1 = rnorm(n), x2 = rnorm(n))
+    df$x3 <- df$x1 + df$x2
+    suppressMessages(
+        fit <- fbrglm(y ~ x1 + x2 + x3, data = df, family = "gaussian",
+                      lambda = "fix", lambda_value = 0.1)
+    )
+    co <- coef(fit)
+    expect_equal(names(co), c("(Intercept)", "x1", "x2", "x3"))
+    dropped <- fit$rank_info$dropped_cols
+    expect_true(all(is.na(co[dropped])))
+    kept <- fit$rank_info$kept_cols
+    expect_true(all(!is.na(co[kept])))
+    expect_false(is.na(co["(Intercept)"]))
+    expect_false(any(is.na(fit$nonzero)))
+})
+
+test_that("predict() works on rank-deficient fits for both training and new data", {
+    set.seed(43)
+    n <- 80
+    df <- data.frame(y = rnorm(n), x1 = rnorm(n), x2 = rnorm(n))
+    df$x3 <- df$x1 + df$x2
+    suppressMessages(
+        fit <- fbrglm(y ~ x1 + x2 + x3, data = df, family = "gaussian",
+                      lambda = "fix", lambda_value = 0.1)
+    )
+    p_train <- predict(fit)
+    expect_length(p_train, n)
+    expect_false(anyNA(p_train))
+    p_new <- predict(fit, newdata = df[seq_len(10), ])
+    expect_length(p_new, 10L)
+    expect_false(anyNA(p_new))
 })
 
 test_that("rank_info$rank_deficient is FALSE on a healthy design", {
@@ -146,6 +187,8 @@ test_that("rank_info$rank_deficient is FALSE on a healthy design", {
                   lambda = "fix", lambda_value = 0.1)
     expect_false(fit$rank_info$rank_deficient)
     expect_equal(fit$rank_info$rank, fit$rank_info$ncol)
+    expect_equal(fit$rank_info$kept_cols, fit$x_colnames)
+    expect_equal(fit$rank_info$dropped_cols, character(0))
 })
 
 test_that(".fbrglm_align_x pads missing, drops extra, reorders", {

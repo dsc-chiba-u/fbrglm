@@ -75,7 +75,12 @@ a family object), \code{family_name} (a short display string), \code{weights},
 (\code{cv.glmnet}, or \code{NULL} for \code{lambda = "fix"}), \code{coefficients},
 \code{nonzero}, \code{terms}, \code{xlevels}, \code{contrasts}, \code{x_colnames}, \code{x_train},
 \code{nobs_info} (\code{n_total} / \code{n_dropped_missing} / \code{n_used}), and
-\code{rank_info} (\code{rank} / \code{ncol} / \code{rank_deficient} / \code{pivot}).
+\code{rank_info} (\code{rank} / \code{ncol} / \code{rank_deficient} / \code{pivot} /
+\code{kept_cols} / \code{dropped_cols}). When the design is rank-deficient,
+linearly dependent columns are dropped before fitting (in the
+spirit of \code{\link[stats:glm]{stats::glm()}}); their entries in \code{coefficients} are
+reported as \code{NA} to distinguish "not identifiable" from
+"shrunk to zero by penalty".
 }
 \description{
 Fits a regularized generalized linear model with a formula/data interface
@@ -93,6 +98,10 @@ tests but marked \strong{experimental}: more unusual usage (Cox strata,
 tie handling, time-varying covariates) is not yet validated. Joint
 θ estimation in the spirit of \code{MASS::glm.nb()} is out of scope; pass
 the desired θ to \code{MASS::negative.binomial()} directly. λ rules are
-\code{cv_min} / \code{cv_1se} / \code{fix}; heavier features (split / selective
-inference, rank-deficient column dropping) are tracked in \code{TODO.md}.
+\code{cv_min} / \code{cv_1se} / \code{fix}. Rank-deficient designs are handled in
+the spirit of \code{\link[stats:glm]{stats::glm()}}: linearly dependent columns are dropped
+via a QR pivot, the underlying glmnet fit only sees the independent
+subset, and the dropped columns surface as \code{NA} in \code{coef()} /
+\code{summary()}. Heavier features (split / selective inference) are
+tracked in \code{TODO.md}.
 }
