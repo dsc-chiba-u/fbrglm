@@ -935,29 +935,36 @@ summary tables that the next section reads.
 
 ## Prediction consistency under factor-level mismatch
 
-A binomial dataset is constructed so that the training factor `g` has
-levels `A / B / C / D`, while the test factor's *levels* are narrowed
-to `A / B`. Each method's behaviour at predict time is recorded
-(Table 3).
+Factor-level mismatches between training and prediction data come in
+two directions, and a wrapper that aims for `glm()`-strict semantics
+needs to handle both. We probe each method on two binomial datasets.
 
-```{r prediction-table, echo = FALSE}
+**Scenario A — narrowed test (Table 3a).** Training has factor `g`
+with levels `A / B / C / D`; the test factor is constructed with the
+narrower level set `A / B`. The "missing" levels just do not appear
+in the test data; the right behaviour is to produce a design matrix
+of the same width as training, zero-filling the dummy columns for the
+absent levels.
+
+```{r prediction-table-narrowed, echo = FALSE}
 pred_df <- utils::read.csv(
     file.path(exp_dir, "results", "summary",  # nolint
               "manuscript_prediction_table.csv"),
     stringsAsFactors = FALSE
 )
-short_note <- c(
-    "fbrglm"           = "auto alignment",
-    "glmnet_raw_naive" = "column mismatch",
-    "glmnet_raw_safe"  = "manual alignment",
-    "glmnetUtils"      = "failed here",
-    "parsnip_workflow" = "workflow preprocessing"
+short_note_a <- c(
+    "fbrglm"           = "default path: auto-aligns",
+    "glmnet_raw_naive" = "column-width mismatch",
+    "glmnet_raw_safe"  = "manual re-level required",
+    "glmnetUtils"      = "default fast path fails",
+    "glmnetUtils_mf"   = "user must set use.model.frame=TRUE",
+    "parsnip_workflow" = "hardhat preprocessor"
 )
 pred_show <- data.frame(
     method = pred_df$method,
     result = pred_df$prediction_under_narrowed_factor_levels,
     burden = pred_df$user_burden,
-    note   = unname(short_note[pred_df$method]),
+    note   = unname(short_note_a[pred_df$method]),
     stringsAsFactors = FALSE
 )
 rownames(pred_show) <- NULL
@@ -965,15 +972,75 @@ knitr::kable(
     pred_show, format = "html", escape = TRUE, row.names = FALSE,
     col.names = c("method", "result", "burden", "note"),
     align = c("l", "l", "l", "l"),
-    caption = "Table 3: Behaviour at predict time under a narrowed test factor."
+    caption = "Table 3a: Behaviour at predict time when the test factor is *narrower* than training (train: A/B/C/D, test: A/B)."
 )
 ```
 
-Both failure rows produce a `glmnet` runtime error of the form
-*"The number of variables in newx must be N"*. fbrglm and the
-`parsnip` / `workflows` path both succeed automatically; raw `glmnet`
-succeeds when the caller manually re-levels the test factor before
-calling `model.matrix()`.
+Both `Failure` rows in Table 3a produce a `glmnet` runtime error of
+the form *"The number of variables in newx must be N"*. `glmnetUtils`
+provides an opt-in escape: passing `use.model.frame = TRUE` switches
+the wrapper to a path that builds a model frame and carries `xlevels`
+forward, so the narrowed test succeeds. `fbrglm`, the workflow path,
+and `glmnetUtils` with the model-frame option all succeed
+automatically; raw `glmnet` succeeds only when the caller manually
+re-levels the test factor before calling `model.matrix()`.
+
+**Scenario B — novel test levels (Table 3b).** The dataset is
+flipped: training has factor `g` with levels `A / B`, the test
+factor with `A / B / C / D`. Now the test carries values the trained
+model has never seen. The reference behaviour for this case is
+`stats::predict.glm()`'s error message *"factor g has new levels
+C, D"*; any wrapper claiming `glm()`-strict semantics should reproduce
+it on its default path.
+
+```{r prediction-table-novel, echo = FALSE}
+pred_novel_df <- utils::read.csv(
+    file.path(exp_dir, "results", "summary",  # nolint
+              "manuscript_prediction_table_novel.csv"),
+    stringsAsFactors = FALSE
+)
+short_note_b <- c(
+    "fbrglm"           = "default: glm-strict error",
+    "fbrglm_na"        = "opt-in: rows -> NA + warning",
+    "glmnet_raw_naive" = "raw column-width error",
+    "glmnetUtils"      = "raw column-width error",
+    "glmnetUtils_mf"   = "glm-style error (matches glm())",
+    "parsnip_workflow" = "warns, silently uses reference",
+    "base_glm"         = "reference (stats::predict.glm)"
+)
+pred_novel_show <- data.frame(
+    method = pred_novel_df$method,
+    result = pred_novel_df$prediction_under_novel_factor_levels,
+    burden = pred_novel_df$user_burden,
+    note   = unname(short_note_b[pred_novel_df$method]),
+    stringsAsFactors = FALSE
+)
+rownames(pred_novel_show) <- NULL
+knitr::kable(
+    pred_novel_show, format = "html", escape = TRUE, row.names = FALSE,
+    col.names = c("method", "result", "burden", "note"),
+    align = c("l", "l", "l", "l"),
+    caption = "Table 3b: Behaviour at predict time when the test factor carries *novel* levels not seen in training (train: A/B, test: A/B/C/D)."
+)
+```
+
+Three distinct response shapes appear in Table 3b. `fbrglm`'s default
+and `glmnetUtils` with `use.model.frame = TRUE` both reproduce
+`predict.glm()`'s error verbatim — that is the safe-by-default
+behaviour `glm()` users expect. The default `glmnetUtils` path and a
+naive `glmnet` user instead get a low-level *"number of variables in
+newx"* error: the same outcome, but a less informative diagnostic.
+The `parsnip` / `workflows` path takes a softer route: it warns about
+the novel levels, silently coerces those cells to the reference level
+in the design matrix, and returns finite predictions for every row —
+which is convenient for pipeline robustness but can hide a real
+covariate shift from the analyst. Finally, `fbrglm` exposes
+`predict(fit, newdata, on_new_levels = "na")` for production
+pipelines that need a single batch to survive an unseen level: rows
+with novel levels are returned as `NA`, every other row scores
+normally, and a warning names the count of dropped rows. The default
+remains `"error"`, so the safety-by-default `glm()` story is
+preserved unchanged.
 
 ## Runtime overhead of formula / data handling
 
