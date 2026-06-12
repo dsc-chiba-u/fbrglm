@@ -1134,9 +1134,13 @@ knitr::kable(
 ```
 
 The maximum absolute difference between fbrglm's prediction and the
-raw `glmnet` prediction is zero for every family in the table: the
-wrapper changes the user-facing interface and the prediction-time
-design-matrix handling, but not the optimisation. Two qualifications
+raw `glmnet` prediction is exactly zero — not within floating-point
+tolerance, but bit-identical — for every family in the table. fbrglm
+hands `glmnet` the same `(x, y, weights, offset, family, alpha,
+lambda)` arguments a manual caller would construct, so the
+underlying call is the same binary; the wrapper changes the
+user-facing interface and the prediction-time design-matrix
+handling, but not the optimisation. Two qualifications
 go with the table: the negative binomial entry uses *fixed* θ
 (joint θ estimation in the spirit of `MASS::glm.nb()` is out of
 scope), and the Cox entry exercises glmnet's native
