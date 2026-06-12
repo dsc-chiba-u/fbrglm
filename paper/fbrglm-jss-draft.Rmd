@@ -120,53 +120,110 @@ pre, table { page-break-inside: avoid; break-inside: avoid; }
 
 # Introduction
 
-Base R's `glm()` provides a familiar formula/data interface for
-generalized linear models, automatic handling of factor predictors via
-`model.matrix()`, complete-case filtering through `na.action`, and S3
-methods (`print`, `summary`, `predict`, `coef`, `nobs`, `plot`) that
-applied statisticians rely on. `glmnet` [@friedman2010glmnet;
-@tay2023glmnetall] adds L1/L2 regularization to this family and is
-extensively used in practice, but its API operates on a
-caller-constructed design matrix `x` and response vector `y`. Several
-ergonomic frictions follow.
+`glmnet` [@friedman2010glmnet; @simon2011glmnetcox; @tay2023glmnetall]
+is the de facto standard implementation of L1 / L2 / elastic-net
+regularized generalized linear models in R, and a building block
+under enough downstream tooling (workflow frameworks, domain-specific
+wrappers, classroom material) that any new wrapper has to position
+itself relative to it rather than around it. `glmnet` is built around
+a numeric design-matrix API: callers hand in `x` (the design matrix),
+`y` (the response), and a family string, and `glmnet` returns
+coefficients along a $\lambda$ path. The matrix shape is appropriate
+for the optimisation work the package is doing, but it hands the
+entire model-recipe step — encoding factors, expanding interactions,
+choosing contrasts, dropping incomplete rows, deciding which
+$\lambda$ a downstream call should use — back to the analyst's own
+code. In practice this turns into a class of correctness and
+reproducibility hazards that `stats::glm()` handles for the user by
+default but a raw `glmnet` workflow does not.
 
-**Factor handling** is delegated to the caller. A common failure mode
-is that `model.matrix()` applied to a test data frame, in isolation,
-produces fewer columns than the matrix that was used at fit time when
-the test factor's levels are narrower than the training factor's,
-leading to a runtime error from `glmnet::predict()`.
+Five recur often enough that this paper treats them as the
+defining problems a regularized-GLM wrapper should solve.
 
-**Missingness** is not handled. Callers must filter rows themselves;
-there is no built-in "N rows dropped" report.
+1. **Predict-time design-matrix drift.** A test data frame whose
+   factor has narrower levels than the training one, an interaction
+   with one of those levels, or a `model.matrix()` call run on a
+   session with a different `options("contrasts")` setting can all
+   produce a design matrix that no longer matches the training-time
+   encoding. The visible failure is a `glmnet::predict()`
+   "number of variables in `newx`" error; the dangerous one is a
+   silent semantic shift (Section 2).
 
-**λ selection** is post-hoc on the `cv.glmnet` object
-(`$lambda.min`, `$lambda.1se`) or hand-supplied; the wrapper code
-needed to thread a single choice through fit, predict, and report is
-rewritten everywhere.
+2. **Novel factor levels in production data.** A `glm()` user
+   expects `predict()` to refuse and say "factor `g` has new
+   levels C, D". A `glmnet` user has to engineer that error
+   themselves, row by row, in every scoring pipeline.
 
-A goal of fbrglm is to package these conveniences into a wrapper that
-*feels like `glm()`* and otherwise stays out of the way: no new
-modelling abstraction, no new pipe, no opinion on inference. fbrglm
-explicitly does **not** replace the `glmnet` computational engine.
-`glmnet` and `cv.glmnet` are called verbatim under the hood, and the
-resulting objects are stored on the `fbrglm` return value for direct
-access. What fbrglm standardises is the surrounding formula/data
-workflow and the prediction-time reconstruction of the design matrix
-from training-time terms, contrasts, and factor levels.
+3. **Rank-deficient designs.** `stats::glm()` reports linearly
+   dependent columns as `NA`, distinguishing "not identifiable
+   from the design" from "shrunk to zero". `glmnet`'s matrix API
+   reports both as a numeric zero, so a user reading the
+   coefficient vector cannot tell the two cases apart.
+
+4. **Complete-case bookkeeping.** Two-step workflows that filter
+   rows outside the model lose track of how many were dropped,
+   which couples training noise to small-$n$ bugs further down
+   the pipeline. `stats::glm()` exposes the count on the fit;
+   `glmnet` does not.
+
+5. **Inference honesty.** The S3 generics `glm()` users reach for
+   by reflex (`summary()`, `confint()`) print classical SE / $z$
+   / $p$ / CI quantities that have no straightforward
+   post-selection interpretation under regularization, but the
+   temptation to report them anyway — to make a wrapper look
+   "complete" — is real. A wrapper has to decide what its
+   `summary()` says, and to say so explicitly (Section 5).
+
+The closest existing R wrapper is `glmnetUtils` [@glmnetUtils], which
+provides a formula interface to `glmnet` with a fast formula-expansion
+path optimised for wide design matrices. Where `glmnetUtils` focuses
+on the *ergonomics* of the formula step, `fbrglm` focuses on the
+*semantics*: it follows `stats::glm()`'s strict conventions across
+the five hazards above by default. The training-time `terms`,
+`xlevels`, and `contrasts` are stored on the fit object and reused
+at predict time regardless of the active session-level setting; a
+QR-pivot rank check on the column-centred design matrix matches what
+`stats::glm.fit()` would report, dropped columns surface as `NA` in
+`coef()` and `summary()`; novel test factor levels raise the same
+error message `stats::predict.glm()` does, with an explicit
+`on_new_levels = "na"` opt-in for production-style batch scoring;
+complete-case filtering is exposed as a three-number triple
+`nobs_info`; and `summary()` declines to print classical SE / $z$ /
+$p$ / CI under the package's `infer = "none"` mode rather than
+mocking them. The single-package idea is "the `glm()` workflow, run
+through `glmnet`".
+
+fbrglm does not replace the `glmnet` computational engine.
+`glmnet` and `cv.glmnet` are called verbatim under the hood, and
+the resulting objects are stored on the `fbrglm` return value for
+direct access via `as_glmnet()` / `as_cv_glmnet()`. The wrapper
+changes the surrounding workflow — not the optimisation — and the
+family-wide parity sweep in Section 9 confirms that predictions are
+bit-identical to a hand-built raw-`glmnet` call on the same data
+for every family `glmnet` itself supports.
 
 ## Contributions
 
 The contributions of this paper, and of the accompanying R package,
 are:
 
-- a `glm()`-like formula interface to `glmnet` for the full set of
+- a `glm()`-strict formula interface to `glmnet` for the full set of
   families `glmnet` itself accepts (six character strings plus
   arbitrary GLM family objects);
-- prediction-time reconstruction and alignment of design matrices
-  using training-time terms, contrasts, and factor levels, with
-  zero-padding of any missing one-hot columns;
+- predict-time reconstruction of the design matrix from frozen
+  training-time `terms`, `xlevels`, and `contrasts`, with
+  zero-padding for absent factor levels and a glm-style error for
+  novel ones (`on_new_levels = "error"` by default, with an explicit
+  `"na"` opt-in for production batch scoring);
+- QR-pivot rank-deficient column dropping with `NA` in `coef()` /
+  `summary()` for unidentifiable columns, following
+  `stats::glm()`'s "not defined because of singularities"
+  convention;
 - explicit reporting of missing-row handling (`nobs_info`) and
   rank-deficiency diagnostics (`rank_info`);
+- an explicit inference policy refusing to print classical SE / $z$
+  / $p$ / CI under `infer = "none"`, with the rationale surfaced in
+  `summary()`'s footer (Section 5);
 - lightweight interoperability through accessors for the underlying
   `glmnet` and `cv.glmnet` objects (`as_glmnet()`, `as_cv_glmnet()`);
 - a reproducible benchmark suite comparing fbrglm against raw
