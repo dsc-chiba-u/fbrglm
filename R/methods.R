@@ -117,21 +117,50 @@ print.summary.fbrglm <- function(x, ...) {
     cat("\nObservations:\n")
     cat(sprintf("  total = %d, dropped (missing) = %d, used = %d\n",
                 ni$n_total, ni$n_dropped_missing, ni$n_used))
-    cat("\nCoefficients (including zeros):\n")
-    print(x$coefficients)
-    cat(sprintf("\nNon-zero predictors (%d):\n", length(x$nonzero)))
-    if (length(x$nonzero)) {
-        cat("  ", paste(x$nonzero, collapse = ", "), "\n", sep = "")
-    } else {
-        cat("  (none)\n")
-    }
+
     ri <- x$rank_info
-    if (isTRUE(ri$rank_deficient)) {
-        cat(sprintf(
-            "\nRank deficiency: %d of %d columns not defined because of singularities (NA in coef):\n",
-            length(ri$dropped_cols), ri$ncol))
-        cat("  ", paste(ri$dropped_cols, collapse = ", "), "\n", sep = "")
+    rd <- isTRUE(ri$rank_deficient)
+    header <- if (rd) {
+        sprintf("Coefficients: (%d not defined because of singularities: %s)",
+                length(ri$dropped_cols),
+                paste(ri$dropped_cols, collapse = ", "))
+    } else {
+        "Coefficients:"
     }
+    cat("\n", header, "\n", sep = "")
+    if (is.list(x$coefficients) && !is.matrix(x$coefficients)) {
+        ## multinomial / mgaussian: glmnet returns a list of coefficient
+        ## matrices keyed by class / response. Print each block under its
+        ## key so the layout stays interpretable.
+        for (k in names(x$coefficients)) {
+            cat("--- ", k, " ---\n", sep = "")
+            print(x$coefficients[[k]])
+        }
+    } else {
+        ## glm()-style single-column estimate table with NA at dropped
+        ## positions. printCoefmat handles NA alignment cleanly and is
+        ## the same formatter stats::summary.glm() uses.
+        co_mat <- matrix(x$coefficients, ncol = 1L,
+                         dimnames = list(names(x$coefficients), "Estimate"))
+        stats::printCoefmat(co_mat, na.print = "NA", ...)
+    }
+
+    cat(sprintf("\nNon-zero predictors (%d):", length(x$nonzero)))
+    if (length(x$nonzero)) {
+        cat(" ", paste(x$nonzero, collapse = ", "), "\n", sep = "")
+    } else {
+        cat(" (none)\n")
+    }
+
+    ## Inference-policy footer. Spelled out at every summary() call so
+    ## users do not silently mistake regularised point estimates for
+    ## classical maximum-likelihood output. Matches the framing in
+    ## vignette("fbrglm").
+    cat("\nNote: no standard errors, z-values, or p-values are reported under\n")
+    cat("infer = \"none\". Classical inference does not account for the\n")
+    cat("shrinkage bias from L1/L2 penalisation or for the data-driven\n")
+    cat("selection of lambda. Use infer = \"split\" / \"selective\" (planned)\n")
+    cat("for valid post-selection inference; see vignette(\"fbrglm\").\n")
     invisible(x)
 }
 

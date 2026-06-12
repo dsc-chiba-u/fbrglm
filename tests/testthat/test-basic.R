@@ -191,6 +191,47 @@ test_that("rank_info$rank_deficient is FALSE on a healthy design", {
     expect_equal(fit$rank_info$dropped_cols, character(0))
 })
 
+test_that("summary() renders a glm-style Estimate table with NA at dropped positions", {
+    set.seed(44)
+    n <- 60
+    df <- data.frame(y = rnorm(n), x1 = rnorm(n), x2 = rnorm(n))
+    df$x3 <- df$x1 + df$x2
+    suppressMessages(
+        fit <- fbrglm(y ~ x1 + x2 + x3, data = df, family = "gaussian",
+                      lambda = "fix", lambda_value = 0.1)
+    )
+    out <- capture.output(print(summary(fit)))
+    txt <- paste(out, collapse = "\n")
+    expect_match(txt, "Estimate", fixed = TRUE)
+    expect_match(txt, "(1 not defined because of singularities: x3)",
+                 fixed = TRUE)
+    expect_match(txt, format(fit$lambda_value), fixed = TRUE)
+})
+
+test_that("summary() prints the inference-policy footer", {
+    set.seed(45)
+    n <- 60
+    df <- data.frame(y = rnorm(n), x1 = rnorm(n), x2 = rnorm(n))
+    fit <- fbrglm(y ~ x1 + x2, data = df, family = "gaussian",
+                  lambda = "fix", lambda_value = 0.1)
+    txt <- paste(capture.output(print(summary(fit))), collapse = "\n")
+    expect_match(txt, "no standard errors", fixed = TRUE)
+    expect_match(txt, "shrinkage bias", fixed = TRUE)
+    expect_match(txt, "data-driven\nselection of lambda", fixed = TRUE)
+})
+
+test_that("summary() omits the singularity note when the design is healthy", {
+    set.seed(46)
+    n <- 60
+    df <- data.frame(y = rnorm(n), x1 = rnorm(n), x2 = rnorm(n))
+    fit <- fbrglm(y ~ x1 + x2, data = df, family = "gaussian",
+                  lambda = "fix", lambda_value = 0.1)
+    txt <- paste(capture.output(print(summary(fit))), collapse = "\n")
+    expect_false(grepl("not defined because of singularities", txt,
+                       fixed = TRUE))
+    expect_match(txt, "Coefficients:\n", fixed = TRUE)
+})
+
 test_that(".fbrglm_align_x pads missing, drops extra, reorders", {
     X <- matrix(c(10, 20, 30,
                   40, 50, 60), nrow = 3, byrow = FALSE)
