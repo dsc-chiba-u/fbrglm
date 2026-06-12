@@ -246,6 +246,107 @@ test_that(".fbrglm_align_x pads missing, drops extra, reorders", {
     expect_equal(nrow(out), 3L)
 })
 
+test_that("predict errors on novel factor levels by default (glm-strict)", {
+    set.seed(50)
+    train <- data.frame(
+        y  = rbinom(200, 1, 0.5),
+        x1 = rnorm(200),
+        g  = factor(sample(c("A", "B"), 200, replace = TRUE),
+                    levels = c("A", "B"))
+    )
+    test_wider <- data.frame(
+        x1 = rnorm(10),
+        g  = factor(c("A", "B", "C", "D", "A", "C", "B", "D", "A", "C"),
+                    levels = c("A", "B", "C", "D"))
+    )
+    suppressMessages(
+        fit <- fbrglm(y ~ x1 + g, data = train, family = "binomial",
+                      lambda = "fix", lambda_value = 0.05)
+    )
+    expect_error(
+        predict(fit, newdata = test_wider, type = "response"),
+        "新しい水準|new levels"
+    )
+})
+
+test_that("predict on_new_levels = 'na' returns NA for novel-level rows with warning", {
+    set.seed(51)
+    train <- data.frame(
+        y  = rbinom(200, 1, 0.5),
+        x1 = rnorm(200),
+        g  = factor(sample(c("A", "B"), 200, replace = TRUE),
+                    levels = c("A", "B"))
+    )
+    test_wider <- data.frame(
+        x1 = rnorm(10),
+        g  = factor(c("A", "B", "C", "D", "A", "C", "B", "D", "A", "C"),
+                    levels = c("A", "B", "C", "D"))
+    )
+    suppressMessages(
+        fit <- fbrglm(y ~ x1 + g, data = train, family = "binomial",
+                      lambda = "fix", lambda_value = 0.05)
+    )
+    novel_mask <- as.character(test_wider$g) %in% c("C", "D")
+    expect_warning(
+        pred <- predict(fit, newdata = test_wider, type = "response",
+                        on_new_levels = "na"),
+        "predict.fbrglm:.*not seen in training"
+    )
+    expect_length(pred, nrow(test_wider))
+    expect_true(all(is.na(pred[novel_mask])))
+    expect_true(all(is.finite(pred[!novel_mask])))
+})
+
+test_that("predict on_new_levels = 'na' also masks type = 'class' output", {
+    set.seed(52)
+    train <- data.frame(
+        y  = rbinom(200, 1, 0.5),
+        x1 = rnorm(200),
+        g  = factor(sample(c("A", "B"), 200, replace = TRUE),
+                    levels = c("A", "B"))
+    )
+    test_wider <- data.frame(
+        x1 = rnorm(5),
+        g  = factor(c("A", "B", "C", "D", "A"), levels = c("A", "B", "C", "D"))
+    )
+    suppressMessages(
+        fit <- fbrglm(y ~ x1 + g, data = train, family = "binomial",
+                      lambda = "fix", lambda_value = 0.05)
+    )
+    suppressWarnings(
+        cls <- predict(fit, newdata = test_wider, type = "class",
+                       on_new_levels = "na")
+    )
+    expect_length(cls, 5L)
+    expect_true(all(is.na(cls[c(3, 4)])))
+    expect_true(all(!is.na(cls[c(1, 2, 5)])))
+})
+
+test_that("predict on_new_levels = 'na' is a no-op when all levels are familiar", {
+    set.seed(53)
+    train <- data.frame(
+        y  = rbinom(200, 1, 0.5),
+        x1 = rnorm(200),
+        g  = factor(sample(c("A", "B"), 200, replace = TRUE),
+                    levels = c("A", "B"))
+    )
+    test_safe <- data.frame(
+        x1 = rnorm(10),
+        g  = factor(sample(c("A", "B"), 10, replace = TRUE),
+                    levels = c("A", "B"))
+    )
+    suppressMessages(
+        fit <- fbrglm(y ~ x1 + g, data = train, family = "binomial",
+                      lambda = "fix", lambda_value = 0.05)
+    )
+    expect_silent(
+        pred <- predict(fit, newdata = test_safe, type = "response",
+                        on_new_levels = "na")
+    )
+    expect_length(pred, 10L)
+    expect_true(all(is.finite(pred)))
+})
+
 test_that("predict succeeds when newdata factor has narrowed levels", {
     set.seed(20)
     n_train <- 200

@@ -102,6 +102,10 @@ the desired θ to \code{MASS::negative.binomial()} directly. λ rules are
 the spirit of \code{\link[stats:glm]{stats::glm()}}: linearly dependent columns are dropped
 via a QR pivot, the underlying glmnet fit only sees the independent
 subset, and the dropped columns surface as \code{NA} in \code{coef()} /
-\code{summary()}. Heavier features (split / selective inference) are
-tracked in \code{TODO.md}.
+\code{summary()}. Novel factor levels in \code{newdata} at predict time also
+follow \code{\link[stats:predict.glm]{stats::predict.glm()}} by default — an unseen level raises an
+error. Production scoring pipelines can opt into
+\code{predict(fit, newdata, on_new_levels = "na")} to set affected rows
+to \code{NA} (with a warning) instead. Heavier features (split /
+selective inference) are tracked in \code{TODO.md}.
 }

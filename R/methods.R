@@ -169,12 +169,51 @@ predict.fbrglm <- function(object,
                            newdata = NULL,
                            type = c("link", "response", "class"),
                            newoffset = NULL,
+                           on_new_levels = c("error", "na"),
                            ...) {
-    type <- match.arg(type)
+    type          <- match.arg(type)
+    on_new_levels <- match.arg(on_new_levels)
+    novel_rows    <- logical(0)   # length 0 -> no NA masking at the end
 
     if (is.null(newdata)) {
         X <- object$x_train
     } else {
+        ## Novel-level handling. By default we let stats::model.frame()
+        ## throw the same "新しい水準 / new levels" error that
+        ## stats::predict.glm() would — strict glm() semantics. When the
+        ## caller opts into `on_new_levels = "na"` (typically for batch
+        ## scoring pipelines where one unseen level should not crash the
+        ## whole job), we detect the offending rows up front, substitute
+        ## the reference level so model.frame() succeeds, score the rest
+        ## normally, and overwrite those rows' predictions with NA at the
+        ## very end.
+        if (on_new_levels == "na" && length(object$xlevels)) {
+            novel_rows <- logical(nrow(newdata))
+            for (fac in names(object$xlevels)) {
+                if (!fac %in% names(newdata)) next
+                obs     <- as.character(newdata[[fac]])
+                allowed <- object$xlevels[[fac]]
+                novel_rows <- novel_rows |
+                    (!is.na(obs) & !obs %in% allowed)
+            }
+            if (any(novel_rows)) {
+                warning(sprintf(
+                    "predict.fbrglm: %d row(s) contain factor level(s) not seen in training; their predictions are set to NA.",
+                    sum(novel_rows)), call. = FALSE)
+                newdata <- as.data.frame(newdata)
+                for (fac in names(object$xlevels)) {
+                    if (!fac %in% names(newdata)) next
+                    obs       <- as.character(newdata[[fac]])
+                    allowed   <- object$xlevels[[fac]]
+                    is_novel  <- !is.na(obs) & !obs %in% allowed
+                    if (any(is_novel)) {
+                        obs[is_novel]  <- allowed[1L]
+                        newdata[[fac]] <- factor(obs, levels = allowed)
+                    }
+                }
+            }
+        }
+
         Terms <- stats::delete.response(object$terms)
         mf <- stats::model.frame(Terms, newdata, xlev = object$xlevels)
         X_full <- stats::model.matrix(Terms, mf,
@@ -186,8 +225,9 @@ predict.fbrglm <- function(object,
             X_full
         }
         ## Pad missing columns with zeros, drop extras, reorder.
-        ## Novel factor levels would already have errored inside
-        ## model.frame() above.
+        ## Novel factor levels either errored inside model.frame()
+        ## above (on_new_levels = "error", the glm() default) or were
+        ## substituted to the reference and will be NA'd out below.
         X <- .fbrglm_align_x(X, object$x_colnames)
         ## If the model was fit with rank-deficient drops, restrict
         ## newdata to the same kept columns the underlying glmnet fit
@@ -238,6 +278,16 @@ predict.fbrglm <- function(object,
 
     fam_name <- .fbrglm_family_label(object)
 
+    .mask_novel <- function(out) {
+        if (!length(novel_rows) || !any(novel_rows)) return(out)
+        if (is.matrix(out)) {
+            out[novel_rows, ] <- NA
+        } else {
+            out[novel_rows] <- NA
+        }
+        out
+    }
+
     if (type == "class") {
         if (!fam_name %in% c("binomial", "multinomial")) {
             stop(sprintf(
@@ -247,11 +297,11 @@ predict.fbrglm <- function(object,
         if (fam_name == "binomial") {
             pred_args$type <- "response"
             prob <- do.call(stats::predict, pred_args)
-            return(as.numeric(as.vector(prob) >= 0.5))
+            return(.mask_novel(as.numeric(as.vector(prob) >= 0.5)))
         }
         pred_args$type <- "class"
         raw <- do.call(stats::predict, pred_args)
-        return(as.vector(raw))
+        return(.mask_novel(as.vector(raw)))
     }
 
     pred_args$type <- type
@@ -264,9 +314,9 @@ predict.fbrglm <- function(object,
         pred <- pred[, , 1]
     }
     if (is.matrix(pred) && ncol(pred) == 1L) {
-        return(as.vector(pred))
+        return(.mask_novel(as.vector(pred)))
     }
-    pred
+    .mask_novel(pred)
 }
 
 #' @export
