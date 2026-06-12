@@ -607,3 +607,106 @@ test_that("as_glmnet / as_cv_glmnet return the underlying objects", {
     expect_s3_class(as_glmnet(fit_cv), "glmnet")
     expect_s3_class(as_cv_glmnet(fit_cv), "cv.glmnet")
 })
+
+## Regression tests for the failure modes called out in the manuscript's
+## Motivating problems section: interaction-term column dropout under a
+## narrowed test factor, session-level options("contrasts") changes
+## between fit and predict, and saveRDS round-trips. fbrglm's contract
+## across all three is that the prediction-time design matrix is
+## reconstructed from the fit object alone, not from current session
+## state.
+
+test_that("predict handles y ~ x1 * g when newdata factor narrows", {
+    set.seed(60)
+    train <- data.frame(
+        y  = rnorm(120),
+        x1 = rnorm(120),
+        g  = factor(sample(c("A", "B", "C"), 120, replace = TRUE),
+                    levels = c("A", "B", "C"))
+    )
+    test_narrow <- data.frame(
+        x1 = rnorm(15),
+        g  = factor(sample(c("A", "B"), 15, replace = TRUE),
+                    levels = c("A", "B"))
+    )
+    fit <- fbrglm(y ~ x1 * g, data = train, family = "gaussian",
+                  lambda = "fix", lambda_value = 0.05)
+    ## Train design has 5 columns: x1, gB, gC, x1:gB, x1:gC.
+    ## A naive model.matrix on the narrowed test would only emit
+    ## x1, gB, x1:gB (3 columns) — fbrglm must reconstruct 5.
+    expect_equal(length(fit$x_colnames), 5L)
+    p <- predict(fit, newdata = test_narrow, type = "response")
+    expect_length(p, nrow(test_narrow))
+    expect_true(all(is.finite(p)))
+})
+
+test_that("predict is invariant to session-level options('contrasts')", {
+    set.seed(61)
+    train <- data.frame(
+        y  = rnorm(100),
+        x1 = rnorm(100),
+        g  = factor(sample(c("A", "B", "C"), 100, replace = TRUE),
+                    levels = c("A", "B", "C"))
+    )
+    new_dat <- data.frame(
+        x1 = rnorm(20),
+        g  = factor(sample(c("A", "B", "C"), 20, replace = TRUE),
+                    levels = c("A", "B", "C"))
+    )
+
+    ## Fit under the package default (contr.treatment).
+    opts_in <- options(contrasts = c("contr.treatment", "contr.poly"))
+    on.exit(options(opts_in), add = TRUE)
+    fit <- fbrglm(y ~ x1 + g, data = train, family = "gaussian",
+                  lambda = "fix", lambda_value = 0.05)
+    p_treat <- predict(fit, newdata = new_dat, type = "response")
+
+    ## Flip the session contrasts. fbrglm's stored contrasts attribute
+    ## should make predict() ignore the change.
+    options(contrasts = c("contr.sum", "contr.poly"))
+    p_sum <- predict(fit, newdata = new_dat, type = "response")
+    expect_equal(p_treat, p_sum)
+
+    ## And as a sharper sanity check, predict on the training rows
+    ## under the flipped contrasts must agree with the canonical
+    ## (newdata = NULL) train prediction.
+    p_train_nullnew <- predict(fit, type = "response")
+    p_train_newdat  <- predict(fit, newdata = train, type = "response")
+    expect_equal(p_train_nullnew, p_train_newdat)
+})
+
+test_that("saveRDS / readRDS round-trip preserves predictions", {
+    set.seed(62)
+    train <- data.frame(
+        y  = rnorm(100),
+        x1 = rnorm(100),
+        g  = factor(sample(c("A", "B", "C"), 100, replace = TRUE),
+                    levels = c("A", "B", "C"))
+    )
+    new_dat <- data.frame(
+        x1 = rnorm(15),
+        g  = factor(sample(c("A", "B", "C"), 15, replace = TRUE),
+                    levels = c("A", "B", "C"))
+    )
+    fit_orig <- fbrglm(y ~ x1 + g, data = train, family = "gaussian",
+                       lambda = "fix", lambda_value = 0.05)
+    p_orig <- predict(fit_orig, newdata = new_dat, type = "response")
+
+    rds_path <- tempfile(fileext = ".rds")
+    on.exit(unlink(rds_path), add = TRUE)
+    saveRDS(fit_orig, rds_path)
+
+    ## Reload under a flipped session contrasts setting to verify
+    ## the round-trip is robust to global state.
+    opts_in <- options(contrasts = c("contr.sum", "contr.poly"))
+    on.exit(options(opts_in), add = TRUE)
+    fit_reloaded <- readRDS(rds_path)
+    expect_s3_class(fit_reloaded, "fbrglm")
+
+    p_reloaded <- predict(fit_reloaded, newdata = new_dat,
+                          type = "response")
+    expect_equal(p_orig, p_reloaded)
+
+    ## Coefficient vector also bit-identical across the round trip.
+    expect_equal(coef(fit_orig), coef(fit_reloaded))
+})
