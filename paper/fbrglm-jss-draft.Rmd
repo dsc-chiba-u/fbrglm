@@ -178,10 +178,12 @@ expands the motivating problems with small reproducible examples.
 Section 3 places fbrglm against related software and gives a feature
 comparison table. Section 4 details the package design and
 implementation, including pseudocode for the fit and predict paths.
-Section 5 covers family support. Section 6 walks through worked
-examples. Sections 7 and 8 describe the benchmark design and present
-the results. Section 9 documents the replication material. Sections 10
-and 11 close with limitations and concluding remarks.
+Section 5 spells out the inference policy and the rationale for
+`infer = "none"`. Section 6 covers family support. Section 7 walks
+through worked examples. Sections 8 and 9 describe the benchmark
+design and present the results. Section 10 documents the replication
+material. Sections 11 and 12 close with limitations and concluding
+remarks; an appendix shows verbatim S3 method output.
 
 # Motivating problems
 
@@ -285,16 +287,14 @@ and `plot()` all dispatch from there.
 
 ## Why regularized GLMs complicate classical glm-style summaries
 
-`summary.glm()` returns the IRLS-derived asymptotic standard errors
-and z / p / CI quantities that statisticians routinely use. For a
-regularized fit those quantities are *not* simply IRLS standard errors
-of the regularized coefficients: the shrinkage introduces bias, the
-selection of non-zero terms is data-dependent, and the asymptotic
-calculations break in non-trivial ways. Honest post-selection
-inference (data splitting, selective inference [@tibshirani2016selective]) is a substantial body of work. fbrglm's
-position is to refuse to produce classical SE / z / p / CI under
-`infer = "none"` rather than report numbers that look like the glm()
-output but mean something different.
+Applied users typically read `summary.glm()`'s standard-error /
+$z$ / $p$ / CI block by reflex. For a regularized fit those quantities
+do not retain their textbook meaning — shrinkage introduces bias,
+the data-driven $\lambda$ selection invalidates naive coverage, and
+the active-set conditioning inflates apparent significance. Section 5
+("Inference policy") treats this as a load-bearing design decision in
+its own right and spells out the three failure modes plus fbrglm's
+deliberate `infer = "none"` policy.
 
 ## Serialization and reuse across R sessions
 
@@ -367,7 +367,7 @@ rel_df <- data.frame(
                     "full glmnet family list",
                     "inherits glmnet's family list",
                     "engine-specific",
-                    "full glmnet family list (Section 5)"),
+                    "full glmnet family list (Section 6)"),
     notes       = c("classical SE / p-values",
                     "matrix interface; no formula",
                     "thin formula wrapper",
@@ -463,20 +463,30 @@ Output: an fbrglm object
   7. xlevels   <- saved factor levels of mf
   8. contrasts <- attr(X_full, "contrasts")
   9. X         <- X_full with the (Intercept) column removed
- 10. compute rank_info via qr(X); warn if rank-deficient
+ 10. qrout <- qr(scale(X, center = TRUE, scale = FALSE), tol = 1e-7)
+     # column-centred QR matches stats::glm.fit's pivoted rank check
+     keep_idx     <- sort(qrout$pivot[1:qrout$rank])
+     X_fit        <- X[, keep_idx]
+     kept_cols    <- colnames(X)[keep_idx]
+     dropped_cols <- setdiff(colnames(X), kept_cols)
+     rank_info <- list(rank, ncol(X), rank_deficient,
+                       pivot, kept_cols, dropped_cols)
  11. if lambda == "fix":
-         fit    <- glmnet(X, y, family = family,
+         fit    <- glmnet(X_fit, y, family = family,
                            lambda = lambda_value, alpha, ...)
          cv_fit <- NULL
          chosen <- lambda_value
      else:
-         cv_fit <- cv.glmnet(X, y, family = family, alpha, ...)
+         cv_fit <- cv.glmnet(X_fit, y, family = family, alpha, ...)
          fit    <- cv_fit$glmnet.fit
          chosen <- cv_fit$lambda.min or $lambda.1se
- 12. coefs   <- coef(fit, s = chosen)
+ 12. raw_coefs <- coef(fit, s = chosen)
+     # expand back to (Intercept) + all original colnames,
+     # NA at dropped positions (glm()-style)
+     coefs <- expand_na(raw_coefs, c("(Intercept)", colnames(X)))
  13. nobs_info <- (n_total, n_dropped_missing, n_used)
  14. return list with class c("fbrglm","regularized_glm") containing
-     Terms, xlevels, contrasts, x_colnames=colnames(X), x_train=X,
+     Terms, xlevels, contrasts, x_colnames=colnames(X), x_train=X_fit,
      fit, cv_fit, coefs, chosen, family, family_name,
      nobs_info, rank_info, call, formula, weights, offset,
      alpha, lambda_rule, infer, selection_frac
@@ -548,10 +558,17 @@ is no second path that re-derives a λ choice elsewhere in the object.
 Complete-case filtering happens via
 `model.frame(..., na.action = na.omit)`, with the dropped count
 surfaced both as a one-line message and as the `nobs_info` triple.
-Rank deficiency is detected with `qr(X)` and recorded in
-`rank_info$rank_deficient`; rank-deficient columns are **not** dropped
-in the current implementation (a warning is emitted instead).
-Automatic dropping via QR pivoting is on the roadmap.
+Rank deficiency is detected the same way `stats::glm.fit()` detects
+it — a column-pivoted QR with `tol = 1e-7`, run on the column-centred
+design matrix so the rank check matches `rank(cbind(1, X)) - 1`
+without the intercept having to compete for a pivot slot. When the
+design is rank-deficient, the independent subset `pivot[1:rank]` is
+taken (sorted to preserve the original column order), the underlying
+`glmnet` call only sees those columns, and the dropped columns are
+reported as `NA` in `coef()` and `summary()` — the same "not defined
+because of singularities" convention `stats::summary.glm()` uses.
+`rank_info` records the rank, the original column count, the pivot,
+the names of kept and dropped columns, and the rank-deficiency flag.
 
 ## `as_glmnet()` / `as_cv_glmnet()`
 
@@ -571,7 +588,7 @@ articulating explicitly.
 formula-parsing pass, the storage of `terms` / `xlevels` /
 `contrasts` / `x_colnames` on the object, and the alignment helper
 at predict time all add a small constant cost over raw `glmnet`. The
-runtime benchmark in Section 8 puts this at roughly 2–3× the
+runtime benchmark in Section 9 puts this at roughly 2–3× the
 raw-`glmnet` cost on small data, in the same regime as `glmnetUtils`
 and well below the tidymodels stack. The overhead is the price of
 the prediction-time guarantees in Section 4.2.
@@ -590,13 +607,12 @@ validated. The package surfaces the status mismatch through
 documentation rather than through silently restricting behaviour.
 
 **Statistical honesty over UX consistency.** Refusing to produce
-classical SE / z / p / CI under `infer = "none"` makes the
-`summary()` output less rich than `summary.glm()`. We accept that
-trade because the alternative — reporting IRLS-style quantities for
-a regularized estimator without any post-selection correction —
-would mislead users into using the numbers the way they use glm()
-output. Honest inference is the next milestone, not the current
-one.
+classical SE / $z$ / $p$ / CI under `infer = "none"` makes the
+`summary()` output less rich than `summary.glm()`, but the
+alternative would mislead users into reading regularized output the
+way they read glm() output. The full argument and the planned
+`infer = "split"` / `"selective"` modes are in Section 5
+("Inference policy").
 
 **`glmnet` objects remain reachable.** `as_glmnet()` and
 `as_cv_glmnet()` are first-class accessors. A user who needs a
@@ -624,6 +640,73 @@ The value passed to `glmnet` is stored verbatim on the fit as
 Unknown character strings produce a helpful error referencing the six
 known names; arbitrary functions that do not return family objects
 are rejected at the call site rather than at `glmnet` time.
+
+# Inference policy
+
+A wrapper around a regularized fitter sits in an awkward position
+with respect to classical inference. The S3 generics that applied
+users already know — `summary()`, `confint()`,
+`print(summary)` — return standard errors, $z$ / $t$ values,
+$p$-values, and confidence intervals in the unregularized setting,
+and reach for them by reflex. For a regularized fit those quantities
+are not merely numerically different from their unregularized
+counterparts: their usual interpretation does not survive the
+penalty, and reporting them without a post-selection correction
+would actively mislead the user. Three failure modes are
+responsible.
+
+1. **Shrinkage bias.** L1 / L2 penalized coefficients are biased
+   estimates of the population parameters in exchange for reduced
+   variance. Standard errors derived from a naive IRLS-style
+   sandwich at the regularized solution misrepresent both the bias
+   and the effective sampling variability, so a confidence interval
+   constructed from them does not have its nominal coverage.
+
+2. **Data-driven $\lambda$ selection.** The penalty parameter
+   $\lambda$ is itself chosen from the data — by cross-validation in
+   the `cv_min` and `cv_1se` modes, or pinned by the analyst in
+   `fix` mode. Either way the post-selection distribution of the
+   coefficient vector is conditional on the chosen $\lambda$,
+   complicating any frequentist statement that pretends $\lambda$
+   was fixed in advance.
+
+3. **Active-set conditioning.** L1 estimators perform variable
+   selection as a side effect of estimation. Inference for the
+   non-zero coefficients without conditioning on the active set
+   inflates apparent significance and ignores model-selection
+   uncertainty. The canonical sequential-regression treatment is
+   @tibshirani2016selective.
+
+Distinguishing "shrunk to zero by the penalty" from "not identifiable
+from the design" reinforces the same concern from a different angle:
+the QR-pivot rank-deficiency handling discussed in Section 4 reports
+unidentifiable columns as `NA`, never as `0`, precisely so that a
+classical reading of the coefficient table cannot confuse the two.
+
+fbrglm's response is to keep the inference layer separate from the
+point-estimation layer, exposed via the `infer` argument at fit
+time:
+
+- `infer = "none"` is the only mode currently implemented.
+  `summary()` reports the selected $\lambda$, the rank-deficiency
+  status, the complete-case bookkeeping, the coefficient vector
+  with `NA` at columns the QR-pivot dropped, and a permanent
+  footer naming the three failure modes above. **It does not
+  report classical SE, $z$ / $t$ values, $p$-values, or
+  confidence intervals**, because doing so would imply those
+  quantities had their textbook meaning.
+- `infer = "split"` (data splitting with `selection_frac`) and
+  `infer = "selective"` [@tibshirani2016selective] are the next
+  two inference modes. The signature surface — the `infer` and
+  `selection_frac` arguments at fit time, and the `summary()`
+  contract — is already in place so a follow-up release can fill
+  these modes in without an API break.
+
+This is a "refuse to lie" policy, not a "no inference is possible"
+claim. fbrglm's footprint is the point estimates, the variable
+selection, and the prediction-time guarantees; valid post-selection
+inference is staged as the next milestone rather than mocked up
+inside `summary()` today.
 
 # Family support
 
@@ -847,7 +930,7 @@ dim(predict(fit_mg, type = "response"))
 
 The S3 methods registered by fbrglm mirror the `glm()` surface most
 applied users actually reach for. Using the gaussian fit from
-Section 6.1:
+Section 7.1:
 
 ```{r ex-glm-methods}
 print(fit_lm)
@@ -1195,7 +1278,7 @@ current time` NOTEs. Two vignettes ship with the package:
 `vignette("fbrglm")` (a tour of the formula/data interface, the
 `nobs_info` triple, factor narrowing, and offsets) and
 `vignette("fbrglm-families")` (the family-by-family worked examples
-of Section 6, plus the piecewise exponential survival example).
+of Section 7, plus the piecewise exponential survival example).
 
 # Limitations and future work
 
@@ -1205,9 +1288,9 @@ in the package `TODO.md`.
 - **Honest inference.** Only `infer = "none"` is implemented.
   `infer = "split"` (data splitting with `selection_frac`) and
   `infer = "selective"` [@tibshirani2016selective] are the next two
-  inference modes. No
-  classical SE / z / p / CI is produced; doing so naively for a
-  regularized estimator would be misleading.
+  inference modes. The rationale for refusing to produce classical
+  SE / $z$ / $p$ / CI in the meantime is laid out in Section 5
+  ("Inference policy").
 - **Negative binomial θ.** Fixed-θ NB works via the family object
   route. Joint θ estimation in the spirit of `MASS::glm.nb()` is a
   separate optimisation problem (alternating between coefficient and
@@ -1220,19 +1303,10 @@ in the package `TODO.md`.
   the user direct access to `coxnet` for these cases.
 - **x / y direct entry.** The `x` and `y` arguments are reserved
   but not yet implemented; supply `formula` + `data`.
-- **Rank-deficient designs.** Detected via `qr()` and reported on
-  `rank_info$rank_deficient` plus a warning, but offending columns
-  are not yet dropped automatically. QR-pivot column dropping is on
-  the roadmap.
-- **Benchmark scope.** The benchmarks in Section 8 are small,
+- **Benchmark scope.** The benchmarks in Section 9 are small,
   synthetic, and at a fixed λ. They are sanity checks, not general
   performance claims; in particular no claim of universal runtime
   superiority is supported by these data.
-- **Submission format.** This draft renders to `html_document`
-  because a LaTeX engine is not present in the local environment.
-  The YAML metadata is already in JSS structure; flipping the
-  `output:` block to `rticles::jss_article` and installing a LaTeX
-  distribution will produce the JSS PDF form from the same source.
 
 # Conclusion
 
