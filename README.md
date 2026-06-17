@@ -1,17 +1,41 @@
 # fbrglm
 
-Formula-based regularized GLM — a formula/data interface for
-[`glmnet`](https://cran.r-project.org/package=glmnet) that feels closer to
-base R's `glm()`.
+Safe formula-based wrapper around
+[`glmnet`](https://cran.r-project.org/package=glmnet): bring `glm()`'s
+strict modeling-workflow semantics — formula + data in, predict-time
+design matrix reconstructed from a frozen recipe out — to L1 / L2 /
+elastic-net regularized GLMs.
 
 ## Why
 
-`glmnet` is the standard for L1/L2-regularized GLMs in R, but its API
-diverges from `glm()` in ways that raise the learning cost: it takes a
-pre-built design matrix instead of a formula, doesn't auto-handle factors,
-doesn't filter incomplete cases, and lambda selection is a post-hoc step
-on the `cv.glmnet` object. `fbrglm` closes the gap so you can write the
-same `y ~ x1 + x2` you'd write for `glm()` and get a regularized fit back.
+`glmnet` is the de facto standard for regularized GLMs in R, but its
+matrix-shaped API hands the full model recipe back to the caller:
+factor encoding, contrasts, complete-case filtering, rank deficiency,
+and predict-time design-matrix reconstruction. The recurring failure
+modes are:
+
+- the test factor's levels narrow (or an interaction with such a
+  level is involved), so `glmnet::predict()` errors on a column-width
+  mismatch;
+- a session's `options("contrasts")` setting differs between fit and
+  predict, so the design matrix silently changes meaning;
+- a column is linearly dependent and gets reported as a numeric `0` —
+  visually identical to a coefficient the L1 penalty shrunk to zero;
+- production data carries a factor value the training set never saw,
+  and there is no built-in way to keep the batch alive;
+- complete-case bookkeeping is not exposed on the fit object.
+
+`fbrglm` brings `stats::glm()`'s strict conventions to the `glmnet`
+engine: frozen `terms` / `xlevels` / `contrasts` on the fit, QR-pivot
+rank-deficient column drop with `NA` in `coef()` / `summary()`,
+glm-style error on novel test factor levels (with an opt-in
+`on_new_levels = "na"` for production scoring), explicit
+`nobs_info` complete-case counts, and an explicit refusal to print
+classical SE / z / p / CI under `infer = "none"`. The underlying
+`glmnet` / `cv.glmnet` calls are unchanged — predictions are
+bit-identical to a hand-built raw-`glmnet` call across every
+glmnet-supported family — and reachable through `as_glmnet()` /
+`as_cv_glmnet()` for downstream tooling.
 
 ## Status
 
@@ -126,6 +150,18 @@ test <- data.frame(
 predict(fit, newdata = test, type = "response")
 ```
 
+By default, `predict()` errors on a factor value the model has not
+seen — same as `stats::predict.glm()`. Production-style batch
+scoring can opt into a softer mode:
+
+```r
+# `test_unseen$g` contains a new level "D" not in the training data;
+# rows with that value get NA, the rest score normally, and a warning
+# names how many rows were dropped.
+predict(fit, newdata = test_unseen, type = "response",
+        on_new_levels = "na")
+```
+
 ## API
 
 ### `lambda` selection
@@ -183,20 +219,25 @@ If any rows are dropped, `fbrglm()` prints a one-line message.
 
 ### Inference: only `infer = "none"` for now
 
-The MVP only supports `infer = "none"`. That means **no standard errors,
-no z values, no p values, and no confidence intervals** are produced;
-`coef()` returns the regularized point estimates and `summary()` reports
-the non-zero terms plus complete-case bookkeeping. Honest inference
-(`infer = "split"`, `infer = "selective"`) is the next milestone — see
-`TODO.md`.
+Only `infer = "none"` is currently enabled, and `summary()` deliberately
+**does not report classical SE, z, p-values, or confidence
+intervals**: shrinkage bias, data-driven λ selection, and active-set
+conditioning all break the textbook interpretation of those
+quantities. The `summary()` output instead carries a permanent footer
+naming the three failure modes and the planned remediation paths
+(`infer = "split"` for sample-split refits, `infer = "selective"`
+for selective inference at the chosen λ). `coef()` returns the
+regularized point estimates with `NA` for any column dropped by the
+QR-pivot rank check; `summary()` adds the glm-style
+"`(N not defined because of singularities: ...)`" header when that
+happens, the complete-case `nobs_info` triple, and the inference
+policy footer.
 
 ## Planned (not yet implemented)
 
 - `infer = "split"` — data splitting with `selection_frac` for honest
   post-selection SEs / p-values / CIs via a base-R `glm()` refit.
 - `infer = "selective"` — selective inference at the chosen λ.
-- QR-pivot column dropping for rank-deficient designs (currently a
-  warning plus `fit$rank_info`; offending columns are not yet dropped).
 - Broader Cox coverage (strata, ties handling, time-varying
   covariates) and corresponding tests.
 - Joint θ estimation for negative binomial (`MASS::glm.nb()`-style).
@@ -236,12 +277,22 @@ Comparison methods covered in the small benchmarks:
 - `glmnetUtils`
 - `parsnip` / `workflows` with the `glmnet` engine
 
-Headline observation in the prediction-failure benchmark (small synthetic
-data, narrowed test factor levels): raw `glmnet` can fail when train and
-test design matrices are built naively. `parsnip` / `workflows` also
-handles the narrowed-level case, but with higher runtime overhead in the
-tested setting. `fbrglm` aims to provide a lighter-weight glm-like
-interface with prediction-time design-matrix consistency.
+Headline observations from the prediction-failure benchmark, in two
+factor-level scenarios:
+
+- *Narrowed test* (train: A/B/C/D, test: A/B). `fbrglm`, the
+  `glmnet_raw_safe` (manual re-level) path, `glmnetUtils` with
+  `use.model.frame = TRUE`, and the `parsnip` / `workflows` pipeline
+  all succeed. Default `glmnet_raw_naive` and default `glmnetUtils`
+  fail with a column-width error.
+- *Novel level test* (train: A/B, test: A/B/C/D). `fbrglm`'s default
+  reproduces `stats::predict.glm()`'s "factor has new levels"
+  error verbatim, as does `glmnetUtils` with
+  `use.model.frame = TRUE` and `stats::glm()` itself. The default
+  fast paths get the column-width error instead. `parsnip` warns
+  and silently coerces novel cells to the reference level; `fbrglm`'s
+  opt-in `on_new_levels = "na"` is the only path that returns `NA`
+  at novel-level rows and finite predictions elsewhere.
 
 ## License
 

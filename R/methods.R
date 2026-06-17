@@ -179,8 +179,8 @@ predict.fbrglm <- function(object,
         X <- object$x_train
     } else {
         ## Novel-level handling. By default we let stats::model.frame()
-        ## throw the same "新しい水準 / new levels" error that
-        ## stats::predict.glm() would — strict glm() semantics. When the
+        ## throw the same "factor X has new levels ..." error that
+        ## stats::predict.glm() would - strict glm() semantics. When the
         ## caller opts into `on_new_levels = "na"` (typically for batch
         ## scoring pipelines where one unseen level should not crash the
         ## whole job), we detect the offending rows up front, substitute

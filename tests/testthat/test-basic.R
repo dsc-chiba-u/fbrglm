@@ -263,9 +263,12 @@ test_that("predict errors on novel factor levels by default (glm-strict)", {
         fit <- fbrglm(y ~ x1 + g, data = train, family = "binomial",
                       lambda = "fix", lambda_value = 0.05)
     )
+    ## stats::model.frame() raises a locale-dependent message
+    ## (in English: "factor X has new levels ..."; other R locales
+    ## translate it), so the test only asserts that an error is
+    ## raised rather than matching the message text.
     expect_error(
-        predict(fit, newdata = test_wider, type = "response"),
-        "新しい水準|new levels"
+        predict(fit, newdata = test_wider, type = "response")
     )
 })
 
