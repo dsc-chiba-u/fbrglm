@@ -6,13 +6,13 @@
 ## the `output:` block as noted below and the same metadata is reused.
 ## --------------------------------------------------------------------
 
-title: "fbrglm: A Formula-Based Interface for Regularized Generalized Linear Models in R"
+title: "Safe Formula-Based Workflows for Regularized Generalized Linear Models in R"
 ## For rticles::jss_article, replace the line above with the structured
 ## form below:
 ## title:
-##   formatted: "fbrglm: A Formula-Based Interface for Regularized Generalized Linear Models in R"
-##   plain:     "fbrglm: A Formula-Based Interface for Regularized GLMs in R"
-##   short:     "fbrglm: Formula-Based Regularized GLMs"
+##   formatted: "Safe Formula-Based Workflows for Regularized Generalized Linear Models in R"
+##   plain:     "Safe Formula-Based Workflows for Regularized GLMs in R"
+##   short:     "Safe Formula-Based Regularized GLMs"
 
 author:
   - name: "Koki Tsuyuzaki"

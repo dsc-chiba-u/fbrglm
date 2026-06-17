@@ -130,18 +130,24 @@ src <- sub("## `nobs_info` and `rank_info`",
 src <- sub("## `as_glmnet()` / `as_cv_glmnet()`",
            "## Accessor functions for the underlying glmnet fit",
            src, fixed = TRUE)
+## Appendix A.3 heading carries `on_new_levels`, whose underscore
+## blows up hyperref's bookmark file once pandoc embeds the section
+## title into the .out file. Plain prose avoids the trip.
+src <- sub("## A.3. predict(fit) and on_new_levels",
+           "## A.3. Prediction and novel-level handling",
+           src, fixed = TRUE)
 
 ## --- 3.6 The JSS class template reads `$title.formatted$` from the
 ##        YAML, not the simple `$title$` we use for the html_document
 ##        build. Replace the single-string title with the structured
 ##        form expected by rticles::jss_article so `\title{}` is not
 ##        emitted empty.
-old_title <- 'title: "fbrglm: A Formula-Based Interface for Regularized Generalized Linear Models in R"'
+old_title <- 'title: "Safe Formula-Based Workflows for Regularized Generalized Linear Models in R"'
 new_title <- paste(
     "title:",
-    "  formatted: \"fbrglm: A Formula-Based Interface for Regularized Generalized Linear Models in R\"",
-    "  plain:     \"fbrglm: A Formula-Based Interface for Regularized GLMs in R\"",
-    "  short:     \"fbrglm\"",
+    "  formatted: \"Safe Formula-Based Workflows for Regularized Generalized Linear Models in R\"",
+    "  plain:     \"Safe Formula-Based Workflows for Regularized GLMs in R\"",
+    "  short:     \"Safe Formula-Based Regularized GLMs\"",
     sep = "\n"
 )
 src <- sub(old_title, new_title, src, fixed = TRUE)
