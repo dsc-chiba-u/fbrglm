@@ -1,20 +1,27 @@
 Package: fbrglm
-Title: Formula-Based Regularized Generalized Linear Models
+Title: Safe Formula-Based Regularized Generalized Linear Models
 Version: 0.0.1
 Authors@R:
     person(given = "Koki",
            family = "Tsuyuzaki",
            role = c("aut", "cre"),
            email = "koki.tsuyuzaki@gmail.com")
-Description: Provides a formula-based interface for regularized generalized
-    linear models, wrapping 'glmnet' so it can be used with a feel close to
-    base R's 'glm()'. Handles formula/data input, automatic factor
-    encoding, complete-case filtering, and a single 'lambda' selector
-    covering 'cv.min', 'cv.1se', and a fixed user-specified value.
-    Accepts character family strings (gaussian, binomial, poisson, cox,
-    multinomial, mgaussian) and any GLM family object the underlying
-    'glmnet' itself accepts, including 'Gamma' and fixed-theta negative
-    binomial via 'MASS::negative.binomial'.
+Description: A formula-based wrapper around 'glmnet' that brings the
+    'glm()'-compatible modeling workflow to regularized generalized
+    linear models. Training-time 'terms', 'xlevels', and 'contrasts'
+    are stored on the fit object and reused at predict time, so the
+    design matrix is reconstructed consistently across sessions.
+    Complete-case bookkeeping is exposed via 'nobs_info', and linearly
+    dependent columns are detected by a QR pivot and reported as 'NA'
+    in 'coef()' and 'summary()' (the 'stats::glm()' convention),
+    distinguishing "not identifiable" from "shrunk to zero by the
+    penalty". Novel factor levels at predict time raise the same error
+    'stats::predict.glm()' does by default, with
+    'on_new_levels = "na"' as a production-style opt-in. Accepts
+    character family strings ('gaussian', 'binomial', 'poisson',
+    'cox', 'multinomial', 'mgaussian') and any 'glm' family object the
+    underlying 'glmnet' itself accepts, including 'Gamma' and
+    fixed-theta negative binomial via 'MASS::negative.binomial'.
 URL: https://github.com/dsc-chiba-u/fbrglm
 BugReports: https://github.com/dsc-chiba-u/fbrglm/issues
 License: MIT + file LICENSE
