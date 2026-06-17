@@ -5,7 +5,7 @@ Authors@R:
     person(given = "Koki",
            family = "Tsuyuzaki",
            role = c("aut", "cre"),
-           email = "koki.tsuyuzaki@gmail.com")
+           email = "k.t.the-answer@hotmail.co.jp")
 Description: A formula-based wrapper around 'glmnet' that brings the
     'glm()'-compatible modeling workflow to regularized generalized
     linear models. Training-time 'terms', 'xlevels', and 'contrasts'

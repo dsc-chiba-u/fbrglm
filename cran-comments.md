@@ -35,7 +35,7 @@ None — this is a new package.
 
 ## Authors / maintainer
 
-* Maintainer: Koki Tsuyuzaki <koki.tsuyuzaki@gmail.com>
+* Maintainer: Koki Tsuyuzaki <k.t.the-answer@hotmail.co.jp>
 
 ## Notes for the reviewer
 
