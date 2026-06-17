@@ -12,14 +12,15 @@
 #' Native Cox, multinomial, and mgaussian paths are exercised by the
 #' tests but marked **experimental**: more unusual usage (Cox strata,
 #' tie handling, time-varying covariates) is not yet validated. Joint
-#' θ estimation in the spirit of `MASS::glm.nb()` is out of scope; pass
-#' the desired θ to `MASS::negative.binomial()` directly. λ rules are
-#' `cv_min` / `cv_1se` / `fix`. Rank-deficient designs are handled in
+#' theta estimation in the spirit of `MASS::glm.nb()` is out of scope;
+#' pass the desired theta to `MASS::negative.binomial()` directly.
+#' `lambda` rules are `cv_min` / `cv_1se` / `fix`. Rank-deficient
+#' designs are handled in
 #' the spirit of [stats::glm()]: linearly dependent columns are dropped
 #' via a QR pivot, the underlying glmnet fit only sees the independent
 #' subset, and the dropped columns surface as `NA` in `coef()` /
 #' `summary()`. Novel factor levels in `newdata` at predict time also
-#' follow [stats::predict.glm()] by default — an unseen level raises an
+#' follow [stats::predict.glm()] by default -- an unseen level raises an
 #' error. Production scoring pipelines can opt into
 #' `predict(fit, newdata, on_new_levels = "na")` to set affected rows
 #' to `NA` (with a warning) instead. Heavier features (split /
@@ -33,7 +34,7 @@
 #'   `"poisson"`, `"cox"`, `"multinomial"`, `"mgaussian"`), a GLM family
 #'   object (e.g. `stats::Gamma(link = "log")`,
 #'   `MASS::negative.binomial(theta = 2)`), or a bare family generator
-#'   (e.g. `binomial`) — the same surface `glmnet` itself accepts. Cox,
+#'   (e.g. `binomial`) -- the same surface `glmnet` itself accepts. Cox,
 #'   multinomial, and mgaussian are supported but **experimental** (see
 #'   Details).
 #' @param weights Optional observation weights, passed to glmnet / cv.glmnet.
@@ -45,15 +46,16 @@
 #' @param selection_frac Selection-share for `infer = "split"` (default 0.2).
 #'   Stored only; not yet used.
 #' @param alpha Elastic-net mixing parameter, passed to glmnet.
-#' @param lambda λ-selection rule: `"cv_min"`, `"cv_1se"`, or `"fix"`.
-#' @param lambda_value Numeric λ used when `lambda = "fix"`.
+#' @param lambda `lambda`-selection rule: `"cv_min"`, `"cv_1se"`, or
+#'   `"fix"`.
+#' @param lambda_value Numeric `lambda` used when `lambda = "fix"`.
 #' @param x,y Optional pre-built design matrix and response. Not yet
 #'   supported; supply `formula` + `data` instead.
 #' @param ... Additional arguments forwarded to [glmnet::glmnet()] /
 #'   [glmnet::cv.glmnet()] (`nlambda`, `nfolds`, `standardize`, ...).
 #'
 #' @return An object of class `c("fbrglm", "regularized_glm")` with
-#'   fields including `family` (the value passed to glmnet — a string or
+#'   fields including `family` (the value passed to glmnet -- a string or
 #'   a family object), `family_name` (a short display string), `weights`,
 #'   `offset`, `alpha`, `lambda_rule`, `lambda_value`, `infer`,
 #'   `selection_frac`, `fit` (the underlying `glmnet` object), `cv_fit`

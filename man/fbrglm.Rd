@@ -38,7 +38,7 @@ the LHS is a matrix expression such as \code{cbind(y1, y2) ~ ...}.}
 \code{"poisson"}, \code{"cox"}, \code{"multinomial"}, \code{"mgaussian"}), a GLM family
 object (e.g. \code{stats::Gamma(link = "log")},
 \code{MASS::negative.binomial(theta = 2)}), or a bare family generator
-(e.g. \code{binomial}) — the same surface \code{glmnet} itself accepts. Cox,
+(e.g. \code{binomial}) -- the same surface \code{glmnet} itself accepts. Cox,
 multinomial, and mgaussian are supported but \strong{experimental} (see
 Details).}
 
@@ -56,9 +56,10 @@ Stored only; not yet used.}
 
 \item{alpha}{Elastic-net mixing parameter, passed to glmnet.}
 
-\item{lambda}{λ-selection rule: \code{"cv_min"}, \code{"cv_1se"}, or \code{"fix"}.}
+\item{lambda}{\code{lambda}-selection rule: \code{"cv_min"}, \code{"cv_1se"}, or
+\code{"fix"}.}
 
-\item{lambda_value}{Numeric λ used when \code{lambda = "fix"}.}
+\item{lambda_value}{Numeric \code{lambda} used when \code{lambda = "fix"}.}
 
 \item{x, y}{Optional pre-built design matrix and response. Not yet
 supported; supply \code{formula} + \code{data} instead.}
@@ -68,7 +69,7 @@ supported; supply \code{formula} + \code{data} instead.}
 }
 \value{
 An object of class \code{c("fbrglm", "regularized_glm")} with
-fields including \code{family} (the value passed to glmnet — a string or
+fields including \code{family} (the value passed to glmnet -- a string or
 a family object), \code{family_name} (a short display string), \code{weights},
 \code{offset}, \code{alpha}, \code{lambda_rule}, \code{lambda_value}, \code{infer},
 \code{selection_frac}, \code{fit} (the underlying \code{glmnet} object), \code{cv_fit}
@@ -96,14 +97,15 @@ are accepted; so are GLM family objects (e.g.
 Native Cox, multinomial, and mgaussian paths are exercised by the
 tests but marked \strong{experimental}: more unusual usage (Cox strata,
 tie handling, time-varying covariates) is not yet validated. Joint
-θ estimation in the spirit of \code{MASS::glm.nb()} is out of scope; pass
-the desired θ to \code{MASS::negative.binomial()} directly. λ rules are
-\code{cv_min} / \code{cv_1se} / \code{fix}. Rank-deficient designs are handled in
+theta estimation in the spirit of \code{MASS::glm.nb()} is out of scope;
+pass the desired theta to \code{MASS::negative.binomial()} directly.
+\code{lambda} rules are \code{cv_min} / \code{cv_1se} / \code{fix}. Rank-deficient
+designs are handled in
 the spirit of \code{\link[stats:glm]{stats::glm()}}: linearly dependent columns are dropped
 via a QR pivot, the underlying glmnet fit only sees the independent
 subset, and the dropped columns surface as \code{NA} in \code{coef()} /
 \code{summary()}. Novel factor levels in \code{newdata} at predict time also
-follow \code{\link[stats:predict.glm]{stats::predict.glm()}} by default — an unseen level raises an
+follow \code{\link[stats:predict.glm]{stats::predict.glm()}} by default -- an unseen level raises an
 error. Production scoring pipelines can opt into
 \code{predict(fit, newdata, on_new_levels = "na")} to set affected rows
 to \code{NA} (with a warning) instead. Heavier features (split /
