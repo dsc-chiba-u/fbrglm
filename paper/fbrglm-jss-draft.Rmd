@@ -16,33 +16,47 @@ title: "fbrglm: A Formula-Based Interface for Regularized Generalized Linear Mod
 
 author:
   - name: "Koki Tsuyuzaki"
-    affiliation: "Chiba University"
+    affiliation: "Data Science Core, Chiba University"
     address: "1-33 Yayoi-cho, Inage-ku, Chiba 263-8522, Japan"
     email: "koki.tsuyuzaki@gmail.com"
+  - name: "Kentaro Sakamaki"
+    affiliation: "TODO affiliation"   # confirm before submission
+    address:     "TODO address"
+    email:       "kentaro.sakamaki@gmail.com"
+  - name: "Hiromu Nishiuchi"
+    affiliation: "Data Science Core, Chiba University"
+    address: "1-33 Yayoi-cho, Inage-ku, Chiba 263-8522, Japan"
+    email: "hiromunishiuchi@gmail.com"
 
 abstract: >
-  `glmnet` is the de-facto regularized generalized linear model engine in
-  R, but its interface is built around a pre-constructed design matrix
-  and a response vector. The gap between this style and base R's
-  `glm()` is a recurring source of friction in applied work — factor
-  handling, complete-case filtering, train/test design-matrix
-  consistency, and a single λ-selection rule all land on the caller.
-  This paper introduces fbrglm, a lightweight formula-based wrapper
-  around `glmnet`. It accepts `formula` and `data`, stores
-  training-time factor levels and contrasts on the fit object, rebuilds
-  the prediction-time design matrix consistently, reports complete-case
-  filtering explicitly, and exposes the underlying `glmnet` /
-  `cv.glmnet` objects for downstream use. The package accepts the same
-  family argument surface as `glmnet` itself — character strings for
-  `gaussian`, `binomial`, `poisson`, `cox`, `multinomial`, `mgaussian`,
-  and GLM family objects such as `stats::Gamma(link = "log")` or
-  `MASS::negative.binomial(theta = ...)`. Current scope is
-  `infer = "none"`; honest post-selection inference and additional
-  features are deferred to later milestones. A small reproducible
-  benchmark suite compares fbrglm to raw `glmnet`, `glmnetUtils`, and a
-  `parsnip` / `workflows` pipeline; in the family-wide parity sweep
-  fbrglm reproduces raw `glmnet` predictions across all eight
-  glmnet-compatible families tested.
+  `glmnet` is the de facto standard implementation of regularized
+  generalized linear models in R, but its interface is built around a
+  pre-constructed design matrix and a response vector — leaving every
+  step that `stats::glm()` handles for the user (factor encoding,
+  contrasts, complete-case filtering, rank deficiency, prediction-time
+  design-matrix reconstruction, and an explicit inference policy) on
+  the caller. The result is a class of correctness and reproducibility
+  hazards that surface as silent predict-time failures, design-matrix
+  drift across sessions, and coefficient tables that cannot distinguish
+  "shrunk to zero by the penalty" from "not identifiable from the
+  design". This paper introduces fbrglm, a lightweight wrapper around
+  `glmnet` that brings the `glm()`-compatible modeling workflow —
+  formula + data, frozen `terms` / `xlevels` / `contrasts` on the fit
+  object, glm-style NA reporting for rank-deficient columns, glm-style
+  errors on novel factor levels (with an explicit `on_new_levels = "na"`
+  opt-in for production scoring), explicit `nobs_info` complete-case
+  bookkeeping, and an explicit inference policy refusing to print
+  classical SE / z / p / CI under `infer = "none"` — to the full
+  `glmnet` family surface (`gaussian`, `binomial`, `poisson`, `cox`,
+  `multinomial`, `mgaussian`, plus arbitrary GLM family objects such as
+  `stats::Gamma(link = "log")` or `MASS::negative.binomial(theta = ...)`).
+  Predictions are bit-identical to a hand-built raw-`glmnet` call across
+  all eight families tested in the companion benchmark suite, which also
+  compares fbrglm to `glmnetUtils` and a `parsnip` / `workflows`
+  pipeline. fbrglm wraps `glmnet` rather than replacing it: `glmnet`
+  and `cv.glmnet` are called verbatim, and accessor functions
+  (`as_glmnet()`, `as_cv_glmnet()`) expose the underlying objects for
+  downstream tooling.
 
 keywords:
   - "regularized generalized linear models"
@@ -178,20 +192,23 @@ The closest existing R wrapper is `glmnetUtils` [@glmnetUtils], which
 provides a formula interface to `glmnet` with a fast formula-expansion
 path optimised for wide design matrices. Where `glmnetUtils` focuses
 on the *ergonomics* of the formula step, `fbrglm` focuses on the
-*semantics*: it follows `stats::glm()`'s strict conventions across
-the five hazards above by default. The training-time `terms`,
-`xlevels`, and `contrasts` are stored on the fit object and reused
-at predict time regardless of the active session-level setting; a
-QR-pivot rank check on the column-centred design matrix matches what
-`stats::glm.fit()` would report, dropped columns surface as `NA` in
-`coef()` and `summary()`; novel test factor levels raise the same
-error message `stats::predict.glm()` does, with an explicit
-`on_new_levels = "na"` opt-in for production-style batch scoring;
-complete-case filtering is exposed as a three-number triple
-`nobs_info`; and `summary()` declines to print classical SE / $z$ /
-$p$ / CI under the package's `infer = "none"` mode rather than
-mocking them. The single-package idea is "the `glm()` workflow, run
-through `glmnet`".
+*semantics*: it brings the `glm()`-compatible modeling workflow —
+formula + data in, predict-time design matrix reconstructed from a
+frozen recipe out — to `glmnet`'s full family surface, and follows
+`stats::glm()`'s strict conventions across the five hazards above by
+default. The training-time `terms`, `xlevels`, and `contrasts` are
+stored on the fit object and reused at predict time regardless of the
+active session-level setting; a QR-pivot rank check on the
+column-centred design matrix matches what `stats::glm.fit()` would
+report, and dropped columns surface as `NA` in `coef()` and
+`summary()`; novel test factor levels raise the same error message
+`stats::predict.glm()` does, with an explicit `on_new_levels = "na"`
+opt-in for production-style batch scoring; complete-case filtering is
+exposed as a three-number triple `nobs_info`; and `summary()`
+declines to print classical SE / $z$ / $p$ / CI under the package's
+`infer = "none"` mode rather than mocking them. The single-package
+idea is "the `glm()`-compatible modeling workflow, with `glmnet` as
+the engine and `stats::glm()`'s safety contracts as the default".
 
 fbrglm does not replace the `glmnet` computational engine.
 `glmnet` and `cv.glmnet` are called verbatim under the hood, and
