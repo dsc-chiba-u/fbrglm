@@ -97,6 +97,17 @@ src <- sub("## Negative binomial regression (fixed θ)",
            "## Negative binomial regression (fixed theta)",
            src, fixed = TRUE)
 
+## Two `×` glyphs appear inside R string literals that drive
+## `knitr::kable(col.names = c(...))` — the runtime-table column
+## headers `"fbrglm (× over raw)"` etc. The general substitution
+## below would inject `\texorpdfstring{$\times$}{x}` into those
+## R string literals, where `\t` and `\$` then get re-interpreted
+## by the R parser (the `\t` becomes a literal tab character) and
+## the resulting kable cell is unreadable. Replace the column-header
+## phrase with a plain-ASCII equivalent BEFORE the global pass so
+## the runtime-table headers render cleanly.
+src <- gsub("(× over raw)", "(ratio)", src, fixed = TRUE)
+
 ## Greek-letter substitutes are wrapped in `\texorpdfstring{...}{...}`
 ## so they survive moving arguments such as section headings and PDF
 ## bookmarks; the plain ASCII spelling is used for bookmark text and
@@ -115,6 +126,60 @@ src <- gsub("Δ", "\\texorpdfstring{$\\Delta$}{Delta}",   src, fixed = TRUE)
 ##        chunk, so the blanket substitution is safe.
 src <- gsub(", echo = FALSE\\}", ", echo = FALSE, results = 'asis'}",
             src, perl = TRUE)
+
+## --- 3.75 Several of the manuscript tables have enough columns to
+##         overflow the JSS page width when rendered as a plain LaTeX
+##         tabular. Inject a tiny `.jss_kable` wrapper that, for the
+##         LaTeX path, wraps the rendered tabular in `\resizebox{...}{!}`
+##         so the table is scaled down to the text width. This is done
+##         without going through kableExtra so the JSS template's
+##         `tabu.sty` (which requires xcolor with the `[table]` option
+##         to define `\CT@setup`) does not have to be touched.
+##         For non-LaTeX builds the wrapper is a no-op. The wrapper is
+##         appended to the existing setup chunk; then every
+##         `knitr::kable(` call in the body is rewritten to
+##         `.jss_kable(`. Rewrite first, inject second — if the helper
+##         is injected first, the global rewrite would replace the
+##         `knitr::kable(...)` inside it as well, producing an infinitely
+##         recursive `.jss_kable` -> `.jss_kable` chain that overflows
+##         the evaluation stack at render time.
+src <- gsub("knitr::kable(", ".jss_kable(", src, fixed = TRUE)
+kable_helper <- paste(
+    "",
+    ".jss_kable <- function(...) {",
+    "    k <- knitr::kable(...)",
+    "    if (!identical(attr(k, \"format\"), \"latex\")) return(k)",
+    "    raw <- paste(as.character(k), collapse = \"\\n\")",
+    "    pat <- \"(?s)(\\\\\\\\begin\\\\{tabular\\\\}.*?\\\\\\\\end\\\\{tabular\\\\})\"",
+    "    m <- regmatches(raw, regexpr(pat, raw, perl = TRUE))",
+    "    if (!length(m)) return(k)",
+    "    box_open <- paste0(",
+    "        \"\\\\resizebox{\\\\ifdim\\\\width>\\\\linewidth\",",
+    "        \"\\\\linewidth\\\\else\\\\width\\\\fi}{!}{%\\n\"",
+    "    )",
+    "    box_close <- \"}\"",
+    "    wrapped <- paste0(",
+    "        substr(raw, 1, regexpr(pat, raw, perl = TRUE) - 1L),",
+    "        box_open, m, \"\\n\", box_close,",
+    "        substr(raw, regexpr(pat, raw, perl = TRUE) +",
+    "               attr(regexpr(pat, raw, perl = TRUE), \"match.length\"),",
+    "               nchar(raw))",
+    "    )",
+    "    structure(wrapped,",
+    "              format = \"latex\",",
+    "              class  = c(\"knitr_kable\", \"character\"))",
+    "}",
+    sep = "\n"
+)
+setup_open <- "```{r setup, include = FALSE}\n"
+if (grepl(setup_open, src, fixed = TRUE)) {
+    src <- sub(setup_open,
+               paste0(setup_open, kable_helper, "\n"),
+               src, fixed = TRUE)
+} else {
+    warning("Could not locate the setup chunk to inject the JSS kable helper.",
+            call. = FALSE)
+}
 
 ## --- 3.8 Two section headings contain backtick code spans whose
 ##        underscored tokens (`nobs_info`, `rank_info`, `as_glmnet()`,
@@ -177,6 +242,11 @@ src <- sub(old_keywords, new_keywords, src, fixed = TRUE)
 ##         for figure inclusion but only defines the macro in some
 ##         output templates. The JSS class does not. Provide a no-op
 ##         fallback in the preamble so figures compile.
+##         The rticles JSS template already auto-loads booktabs /
+##         longtable / array / multirow / colortbl / xcolor before
+##         `\begin{document}`, so kableExtra::kable_styling() does not
+##         need any further preamble injection — the only addition
+##         here is the pandocbounded shim.
 src <- sub("  \\usepackage{amsmath}",
            "  \\usepackage{amsmath}\n  \\providecommand{\\pandocbounded}[1]{#1}",
            src, fixed = TRUE)
