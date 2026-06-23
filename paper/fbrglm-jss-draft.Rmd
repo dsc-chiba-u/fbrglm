@@ -329,7 +329,7 @@ with zeros (Section 4).
 Factor narrowing becomes harder to spot once the formula has
 interaction terms. With `y ~ x1 * g`, both the main effect `g` and
 the `x1:g` interaction expand into dummy columns; a level that does
-not appear in the test data therefore drops *two* columns from a
+not appear in the test data therefore drops two columns from a
 naively built test design matrix, not one. The expected outcome of
 `predict()` is still a column-aligned scoring that pretends those
 interaction rows have the missing-level contribution zeroed out, not
@@ -901,7 +901,7 @@ fam_support <- data.frame(
                  "numeric matrix"),
     output   = c("vector", "vector / class label",
                  "vector", "vector", "vector",
-                 "vector (link or response on the relative-risk scale)",
+                 "vector (relative-risk scale)",
                  "(n x k) matrix or class labels",
                  "(n x q) matrix"),
     status   = c("supported", "supported", "supported",
@@ -914,10 +914,10 @@ fam_support <- data.frame(
                  "",
                  "offsets supported via `offset=` / `newoffset=`",
                  "family object route through glmnet",
-                 "theta estimation a la MASS::glm.nb is out of scope",
-                 "no baseline-hazard estimation; strata / ties not fully validated",
-                 "coef() returns a list (one matrix per class)",
-                 "coef() returns a list (one matrix per response)"),
+                 "fixed theta only; joint theta is out of scope",
+                 "no baseline hazard; strata / ties experimental",
+                 "coef() returns a list (one per class)",
+                 "coef() returns a list (one per response)"),
     stringsAsFactors = FALSE
 )
 knitr::kable(
@@ -1175,9 +1175,10 @@ repository's `environment.yml`.
   the maximum absolute difference between fbrglm's prediction and a
   hand-built raw `glmnet` call on the same data.
 
-`scripts/20_plot_small_benchmarks.R` produces the figures and
-`scripts/30_make_manuscript_tables.R` produces the paste-ready
-summary tables that the next section reads.
+Two further scripts assemble the manuscript artifacts: script
+`20_plot_small_benchmarks.R` produces the figures, and script
+`30_make_manuscript_tables.R` produces the paste-ready summary
+tables that the next section reads.
 
 # Results
 
@@ -1422,19 +1423,19 @@ Rscript scripts/20_plot_small_benchmarks.R   # PNGs
 Rscript scripts/30_make_manuscript_tables.R  # CSVs and MD tables
 ```
 
-The pipeline produces:
+The pipeline produces (paths relative to the experiments-repo root):
 
-- `results/summary/families_small.csv` and
-  `results/raw/families_small_raw.csv` — per (family, method) parity.
-- `results/summary/prediction_failures_small.csv` and
-  `results/summary/runtime_small.csv` — small-benchmark summaries.
-- `results/raw/runtime_small_raw.csv` — per-iteration timings.
-- `results/summary/manuscript_prediction_table.{csv,md}`,
-  `results/summary/manuscript_runtime_table.{csv,md}`,
-  `results/summary/manuscript_family_table.{csv,md}` — the three
-  paste-ready summaries referenced in this paper.
-- `results/figures/prediction_failures_small.png` and
-  `results/figures/runtime_small.png` — figures.
+- `summary/families_small.csv` and the matching `raw/...` — per
+  (family, method) parity.
+- `summary/prediction_failures_small.csv` and
+  `summary/runtime_small.csv` — small-benchmark summaries.
+- `raw/runtime_small_raw.csv` — per-iteration timings.
+- Three paste-ready manuscript summaries under `summary/`,
+  one per table: `manuscript_prediction_table.{csv,md}`,
+  `manuscript_runtime_table.{csv,md}`, and
+  `manuscript_family_table.{csv,md}`.
+- Two PNG figures under `figures/`:
+  `prediction_failures_small.png` and `runtime_small.png`.
 
 The package source for fbrglm itself lives at
 <https://github.com/dsc-chiba-u/fbrglm>. `R CMD check --as-cran` is

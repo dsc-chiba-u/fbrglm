@@ -108,6 +108,14 @@ src <- sub("## Negative binomial regression (fixed θ)",
 ## the runtime-table headers render cleanly.
 src <- gsub("(× over raw)", "(ratio)", src, fixed = TRUE)
 
+## `max |Δ| = 0` appears inside backticks (inline code). The global
+## Δ -> `\texorpdfstring{$\Delta$}{Delta}` substitution would inject
+## that macro into the resulting `\texttt{...}` cell, where the math
+## switch never fires and the literal `\texorpdfstring{$\Delta$}{Delta}`
+## leaks into the rendered PDF. Pre-replace the inline-code use with
+## the ASCII spelling so the body text reads naturally.
+src <- gsub("|Δ|", "|Delta|", src, fixed = TRUE)
+
 ## Greek-letter substitutes are wrapped in `\texorpdfstring{...}{...}`
 ## so they survive moving arguments such as section headings and PDF
 ## bookmarks; the plain ASCII spelling is used for bookmark text and
@@ -248,7 +256,9 @@ src <- sub(old_keywords, new_keywords, src, fixed = TRUE)
 ##         need any further preamble injection — the only addition
 ##         here is the pandocbounded shim.
 src <- sub("  \\usepackage{amsmath}",
-           "  \\usepackage{amsmath}\n  \\providecommand{\\pandocbounded}[1]{#1}",
+           paste0("  \\usepackage{amsmath}\n",
+                  "  \\providecommand{\\pandocbounded}[1]{#1}\n",
+                  "  \\setlength{\\emergencystretch}{3em}"),
            src, fixed = TRUE)
 
 writeLines(src, tmp_rmd)
