@@ -331,14 +331,202 @@ nobs.fbrglm <- function(object, ...) {
 }
 
 #' @export
-plot.fbrglm <- function(x, ...) {
-    if (!is.null(x$cv_fit)) {
-        plot(x$cv_fit, ...)
-    } else if (!is.null(x$fit)) {
-        plot(x$fit, ...)
-    } else {
+plot.fbrglm <- function(x,
+                        which   = c(1L, 2L, 3L),
+                        what    = c("diagnostic", "path", "cv"),
+                        caption = c("Residuals vs Fitted",
+                                    "Normal Q-Q",
+                                    "Scale-Location"),
+                        sub.caption = NULL,
+                        ask     = prod(graphics::par("mfcol")) < length(which) &&
+                                  grDevices::dev.interactive(),
+                        ...) {
+    what <- match.arg(what)
+
+    ## A plain guard so the legacy "no fit" assertion still fires
+    ## before any of the per-mode paths starts pulling on residuals.
+    if (is.null(x$fit) && is.null(x$cv_fit)) {
         stop("plot.fbrglm(): no glmnet / cv.glmnet fit attached to this object.",
              call. = FALSE)
     }
+
+    ## --- delegation to the glmnet path / CV plot -------------------
+    ## what = "path" gives the regularization path on the glmnet.fit
+    ## under the hood; what = "cv" gives the CV-curve from cv.glmnet
+    ## and errors if no CV fit was attached.
+    if (what == "path") {
+        if (is.null(x$fit)) {
+            stop("plot.fbrglm(): no glmnet fit attached.", call. = FALSE)
+        }
+        plot(x$fit, ...)
+        return(invisible(x))
+    }
+    if (what == "cv") {
+        if (is.null(x$cv_fit)) {
+            stop("plot.fbrglm(what = \"cv\"): no cv.glmnet fit attached. ",
+                 "Refit with lambda = \"cv_min\" or \"cv_1se\".",
+                 call. = FALSE)
+        }
+        plot(x$cv_fit, ...)
+        return(invisible(x))
+    }
+
+    ## --- glm()-style diagnostic plots ------------------------------
+    res <- .fbrglm_deviance_residuals(x)
+    mu  <- .fbrglm_fitted_response(x)
+    if (is.null(res) || is.null(mu)) {
+        message("plot.fbrglm(what = \"diagnostic\"): deviance residuals ",
+                "are not defined for family '", .fbrglm_family_label(x),
+                "' in this build; falling back to what = \"path\".")
+        plot(x$fit, ...)
+        return(invisible(x))
+    }
+
+    ## For multi-response families (mgaussian) and multinomial, the
+    ## residuals are either matrices or class-conditional vectors; we
+    ## diagnose against the first response / class only and print a
+    ## note. The detailed per-response inspection is the user's job.
+    if (is.matrix(res)) {
+        message("plot.fbrglm: multi-response model; showing diagnostics ",
+                "for the first response only.")
+        res <- res[, 1L, drop = TRUE]
+        if (is.matrix(mu)) mu <- mu[, 1L, drop = TRUE]
+    }
+
+    if (is.null(sub.caption)) {
+        sub.caption <- paste0(
+            "Deviance residuals at lambda = ",
+            format(x$lambda_value, digits = 3),
+            "; under regularization their distribution differs",
+            " from the classical asymptotic GLM theory.")
+    }
+
+    show <- which %in% c(1L, 2L, 3L)
+    which <- which[show]
+    if (ask) {
+        oask <- grDevices::devAskNewPage(TRUE)
+        on.exit(grDevices::devAskNewPage(oask))
+    }
+    for (p in which) {
+        if (p == 1L) {
+            graphics::plot(mu, res,
+                           xlab = "Fitted values",
+                           ylab = "Deviance residuals",
+                           main = caption[1L], ...)
+            graphics::abline(h = 0, lty = 3, col = "grey50")
+        } else if (p == 2L) {
+            stats::qqnorm(res, main = caption[2L],
+                          ylab = "Deviance residuals", ...)
+            stats::qqline(res, lty = 2, col = "grey50")
+        } else if (p == 3L) {
+            graphics::plot(mu, sqrt(abs(res)),
+                           xlab = "Fitted values",
+                           ylab = expression(sqrt(abs(`Deviance residuals`))),
+                           main = caption[3L], ...)
+        }
+    }
+    if (length(which)) {
+        graphics::mtext(sub.caption, side = 1, line = 4, cex = 0.7,
+                        col = "grey40")
+    }
     invisible(x)
+}
+
+#' @importFrom generics tidy
+#' @export
+generics::tidy
+
+#' @importFrom generics glance
+#' @export
+generics::glance
+
+#' @export
+tidy.fbrglm <- function(x, ...) {
+    co <- x$coefficients
+    fam_name <- .fbrglm_family_label(x)
+
+    ## Single-response families: a named numeric vector. The "term"
+    ## column lists every column including (Intercept) and any
+    ## QR-pivot-dropped predictors (which carry NA in coefficients).
+    if (is.numeric(co) && !is.matrix(co)) {
+        nm <- names(co)
+        nonzero <- !is.na(co) & co != 0
+        ## (Intercept) is excluded from the `nonzero` definition the
+        ## summary printer uses, but in the tidy frame we keep its
+        ## row and mark it nonzero / zero just like any other term.
+        return(tibble::tibble(
+            term     = nm,
+            estimate = unname(co),
+            nonzero  = unname(nonzero),
+            lambda   = x$lambda_value
+        ))
+    }
+
+    ## Multinomial / mgaussian: glmnet returns a list of (k or q)
+    ## coefficient matrices; tidy returns a long form with an extra
+    ## column naming the class / response.
+    if (is.list(co) && !is.matrix(co)) {
+        labels <- names(co)
+        if (is.null(labels)) labels <- as.character(seq_along(co))
+        class_label <- if (fam_name == "multinomial") "class" else "response"
+        out <- do.call(rbind, lapply(seq_along(co), function(k) {
+            m  <- as.matrix(co[[k]])
+            est <- if (ncol(m) >= 1L) as.numeric(m[, 1L]) else as.numeric(m)
+            data.frame(
+                term     = rownames(m),
+                estimate = est,
+                nonzero  = !is.na(est) & est != 0,
+                lambda   = x$lambda_value,
+                stringsAsFactors = FALSE,
+                check.names = FALSE
+            ) -> df
+            df[[class_label]] <- labels[k]
+            df[, c("term", "estimate", "nonzero", "lambda", class_label),
+               drop = FALSE]
+        }))
+        rownames(out) <- NULL
+        return(tibble::as_tibble(out))
+    }
+
+    ## Fall-through: best-effort conversion.
+    tibble::tibble(
+        term     = names(co) %||% character(0),
+        estimate = as.numeric(co),
+        nonzero  = !is.na(as.numeric(co)) & as.numeric(co) != 0,
+        lambda   = x$lambda_value
+    )
+}
+
+#' @export
+glance.fbrglm <- function(x, ...) {
+    ni <- .fbrglm_nobs_info(x)
+    ri <- x$rank_info
+    nz <- if (is.list(x$coefficients) && !is.matrix(x$coefficients)) {
+        sum(vapply(x$coefficients, function(m) {
+            v <- as.numeric(as.matrix(m))
+            sum(!is.na(v) & v != 0)
+        }, integer(1L)))
+    } else {
+        length(x$nonzero)
+    }
+    tibble::tibble(
+        family            = .fbrglm_family_label(x),
+        lambda_rule       = x$lambda_rule,
+        lambda            = x$lambda_value,
+        alpha             = x$alpha,
+        infer             = x$infer,
+        nobs              = ni$n_used,
+        nobs_dropped      = ni$n_dropped_missing,
+        nobs_total        = ni$n_total,
+        rank              = ri$rank,
+        rank_dropped      = length(ri$dropped_cols),
+        rank_deficient    = isTRUE(ri$rank_deficient),
+        nonzero           = nz,
+        deviance          = .fbrglm_deviance(x),
+        cvm_at_lambda     = .fbrglm_cv_stat(x, "cvm"),
+        cvsd_at_lambda    = .fbrglm_cv_stat(x, "cvsd"),
+        logLik            = NA_real_,
+        AIC               = NA_real_,
+        BIC               = NA_real_
+    )
 }

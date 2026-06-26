@@ -20,8 +20,8 @@ author:
     address: "1-33 Yayoi-cho, Inage-ku, Chiba 263-8522, Japan"
     email: "koki.tsuyuzaki@gmail.com"
   - name: "Kentaro Sakamaki"
-    affiliation: "TODO affiliation"   # confirm before submission
-    address:     "TODO address"
+    affiliation: "Faculty of Health Data Science, Juntendo University; Center for Next Generation of Community Health, Chiba University"
+    address:     "Japan"
     email:       "kentaro.sakamaki@gmail.com"
   - name: "Hiromu Nishiuchi"
     affiliation: "Data Science Core, Chiba University"
@@ -241,6 +241,12 @@ are:
 - an explicit inference policy refusing to print classical SE / $z$
   / $p$ / CI under `infer = "none"`, with the rationale surfaced in
   `summary()`'s footer (Section 5);
+- a complete `glm()`-shaped S3 surface (`print`, `summary`, `coef`,
+  `predict`, `nobs`, `plot`) plus broom-compatible `tidy()` and
+  `glance()` so a fit object plays naturally with downstream
+  tidy-data workflows; `plot()` defaults to glm-style residual
+  diagnostics and falls back to the `glmnet` regularization-path
+  or `cv.glmnet` curve via `what = "path"` / `"cv"`;
 - lightweight interoperability through accessors for the underlying
   `glmnet` and `cv.glmnet` objects (`as_glmnet()`, `as_cv_glmnet()`);
 - a reproducible benchmark suite comparing fbrglm against raw
@@ -1469,6 +1475,17 @@ in the package `TODO.md`.
   the user direct access to `coxnet` for these cases.
 - **x / y direct entry.** The `x` and `y` arguments are reserved
   but not yet implemented; supply `formula` + `data`.
+- **Diagnostic plots.** `plot(fit, what = "diagnostic")` shows the
+  Residuals-vs-Fitted, Normal Q-Q, and Scale-Location panels of
+  `stats::plot.lm()` using deviance residuals at the chosen
+  $\lambda$. The leverage / Cook's-distance panels are omitted
+  because the hat-matrix-based standardisation behind them does
+  not have a canonical regularized analogue: the lasso hat acts
+  only on the active set, the ridge hat is
+  $\operatorname{tr}(X(X^\top X + n\lambda I)^{-1}X^\top)$, and
+  the elastic-net mix interpolates between them. We chose
+  consistent semantics over a heuristic fill-in; an effective-DF
+  variant is a candidate for a future release.
 - **Benchmark scope.** The benchmarks in Section 9 are small,
   synthetic, and at a fixed λ. They are sanity checks, not general
   performance claims; in particular no claim of universal runtime
@@ -1596,5 +1613,43 @@ predict(fit_app, newdata = test_df, type = "response",
 underlying `glmnet` / `cv.glmnet` objects when downstream code needs
 to use a glmnet-specific helper directly. `nobs(fit_app)` returns
 the complete-case row count actually fed to glmnet.
+
+## A.4. tidy(fit) and glance(fit)
+
+fbrglm registers S3 methods against `generics::tidy` and
+`generics::glance` (the same generics `broom` re-exports), so a
+fit object slots into the standard tidy-data workflow without an
+adapter layer. `tidy(fit)` returns one row per coefficient with
+`term`, `estimate`, `nonzero`, and `lambda`; rank-deficient columns
+carry `NA` in `estimate` so they remain distinguishable from
+penalty-zero coefficients. Classical SE / $z$ / $p$ columns are
+intentionally omitted under `infer = "none"`, matching the
+inference-policy stance of Section 5. `glance(fit)` returns a
+one-row summary with the chosen `lambda`, the complete-case
+bookkeeping, the rank-deficiency status, the active-set size, the
+deviance at the chosen $\lambda$, and the CV statistic at the
+chosen $\lambda$ when a `cv.glmnet` was attached. The `logLik` /
+`AIC` / `BIC` columns are kept in the tibble for broom-shape
+compatibility but set to `NA` because they have no straightforward
+penalized-likelihood analogue under the current `infer = "none"`
+mode.
+
+```{r appendix-tidy}
+tidy(fit_app)
+glance(fit_app)
+```
+
+## A.5. plot(fit)
+
+`plot(fit)` defaults to `what = "diagnostic"`, showing the
+`stats::plot.lm()`-style Residuals-vs-Fitted, Normal Q-Q, and
+Scale-Location panels for deviance residuals at the chosen $\lambda$.
+The leverage / Cook's-distance panels are omitted because the
+classical hat-matrix-based standardisation does not have a clean
+regularized analogue; the omitted panels are documented in
+Section 11. The previous default behaviour remains available via
+`plot(fit, what = "path")` (regularization path on the `glmnet`
+fit) and `plot(fit, what = "cv")` (CV curve on the `cv.glmnet`
+fit, when one is attached).
 
 # References

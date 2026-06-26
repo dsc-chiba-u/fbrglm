@@ -153,3 +153,58 @@ test_that("print/summary survive family objects", {
     expect_no_error(capture.output(print(fit)))
     expect_no_error(capture.output(print(summary(fit))))
 })
+
+test_that("tidy() and glance() work across the supported families", {
+    fits <- list()
+    set.seed(120)
+    n <- 100
+    base <- data.frame(x1 = rnorm(n), x2 = rnorm(n))
+
+    df_g <- cbind(base, y = rnorm(n))
+    fits$gaussian <- fbrglm(y ~ x1 + x2, data = df_g, family = "gaussian",
+                            lambda = "fix", lambda_value = 0.05)
+    df_b <- cbind(base, y = rbinom(n, 1, 0.5))
+    fits$binomial <- fbrglm(y ~ x1 + x2, data = df_b, family = "binomial",
+                            lambda = "fix", lambda_value = 0.05)
+    df_p <- cbind(base, y = rpois(n, lambda = 1))
+    fits$poisson  <- fbrglm(y ~ x1 + x2, data = df_p, family = "poisson",
+                            lambda = "fix", lambda_value = 0.05)
+    df_gam <- cbind(base, y = rgamma(n, 2, 1))
+    fits$gamma <- fbrglm(y ~ x1 + x2, data = df_gam,
+                         family = stats::Gamma(link = "log"),
+                         lambda = "fix", lambda_value = 0.05)
+    if (requireNamespace("MASS", quietly = TRUE)) {
+        fits$negbin <- fbrglm(
+            y ~ x1 + x2, data = df_p,
+            family = MASS::negative.binomial(theta = 2),
+            lambda = "fix", lambda_value = 0.05)
+    }
+    if (requireNamespace("survival", quietly = TRUE)) {
+        df_cox <- cbind(base,
+                        time  = rexp(n, rate = 0.5),
+                        event = rbinom(n, 1, 0.7))
+        fits$cox <- fbrglm(survival::Surv(time, event) ~ x1 + x2,
+                           data = df_cox, family = "cox",
+                           lambda = "fix", lambda_value = 0.05)
+    }
+    df_mn <- cbind(base, y = factor(sample(LETTERS[1:3], n, replace = TRUE)))
+    fits$multinomial <- fbrglm(y ~ x1 + x2, data = df_mn,
+                               family = "multinomial",
+                               lambda = "fix", lambda_value = 0.05)
+    df_mg <- cbind(base, y1 = rnorm(n), y2 = rnorm(n))
+    fits$mgaussian <- fbrglm(cbind(y1, y2) ~ x1 + x2, data = df_mg,
+                             family = "mgaussian",
+                             lambda = "fix", lambda_value = 0.05)
+
+    for (nm in names(fits)) {
+        out_t <- expect_no_error(tidy(fits[[nm]]))
+        expect_s3_class(out_t, "tbl_df")
+        expect_true(all(c("term", "estimate", "nonzero", "lambda")
+                        %in% names(out_t)))
+        out_g <- expect_no_error(glance(fits[[nm]]))
+        expect_equal(nrow(out_g), 1L)
+        expect_true(out_g$family %in% c("gaussian", "binomial", "poisson",
+                                        "Gamma", "Negative Binomial(2)",
+                                        "cox", "multinomial", "mgaussian"))
+    }
+})

@@ -2,7 +2,13 @@
 
 ## Release
 
-This is a first CRAN submission of `fbrglm` (version 0.0.1).
+This is the second CRAN release of `fbrglm`, version 0.1.0
+(initial 0.0.1 was accepted earlier). The minor bump reflects the
+new exported S3 methods listed below; there are no breaking changes
+to existing function signatures, only behavioural changes spelled
+out in `NEWS.md` (the default behaviour of `plot()` now shows
+glm-style diagnostic panels; the previous regularization-path
+behaviour remains available via `plot(fit, what = "path")`).
 
 ## Test environments
 
@@ -43,6 +49,13 @@ None — this is a new package.
   `glmnet` / `cv.glmnet` calls are reachable through the
   `as_glmnet()` / `as_cv_glmnet()` accessors so downstream callers
   can keep using glmnet-specific helpers directly.
+* Version 0.1.0 adds `tidy()` and `glance()` S3 methods registered
+  against `generics::tidy` / `generics::glance`, so the standard
+  `broom` workflow (`tidy(fit)`, `glance(fit)`) works on `fbrglm`
+  fits. The new `plot()` mode shows `glm()`-style residual
+  diagnostics (Residuals vs Fitted, Normal Q-Q, Scale-Location),
+  intentionally omitting the leverage / Cook's-distance panels for
+  which there is no canonical regularized analogue.
 * The companion benchmark / replication material lives in a separate
   repository
   (<https://github.com/dsc-chiba-u/fbrglm-experiments>) and is not

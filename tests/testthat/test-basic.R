@@ -468,7 +468,7 @@ test_that("predict type='class' errors for gaussian and poisson", {
     expect_error(predict(fit_p, type = "class"), "class")
 })
 
-test_that("plot.fbrglm delegates for lambda='cv_min' (cv curve)", {
+test_that("plot.fbrglm defaults to glm-style diagnostic panels", {
     set.seed(80)
     n <- 200
     df <- data.frame(
@@ -480,10 +480,11 @@ test_that("plot.fbrglm delegates for lambda='cv_min' (cv curve)", {
     tf <- tempfile(fileext = ".png")
     grDevices::png(tf)
     on.exit({ grDevices::dev.off(); unlink(tf) }, add = TRUE)
-    expect_no_error(plot(fit))
+    expect_no_error(plot(fit))                 # default what = "diagnostic"
+    expect_no_error(plot(fit, which = 1L))     # single panel
 })
 
-test_that("plot.fbrglm delegates for lambda='fix' (glmnet path)", {
+test_that("plot.fbrglm what='path' delegates to plot.glmnet", {
     set.seed(81)
     n <- 200
     df <- data.frame(
@@ -495,7 +496,31 @@ test_that("plot.fbrglm delegates for lambda='fix' (glmnet path)", {
     tf <- tempfile(fileext = ".png")
     grDevices::png(tf)
     on.exit({ grDevices::dev.off(); unlink(tf) }, add = TRUE)
-    expect_no_error(plot(fit))
+    expect_no_error(plot(fit, what = "path"))
+})
+
+test_that("plot.fbrglm what='cv' delegates to plot.cv.glmnet", {
+    set.seed(82)
+    n <- 200
+    df <- data.frame(
+        y  = rnorm(n),
+        x1 = rnorm(n), x2 = rnorm(n), x3 = rnorm(n)
+    )
+    fit <- fbrglm(y ~ x1 + x2 + x3, data = df, family = "gaussian",
+                  lambda = "cv_1se")
+    tf <- tempfile(fileext = ".png")
+    grDevices::png(tf)
+    on.exit({ grDevices::dev.off(); unlink(tf) }, add = TRUE)
+    expect_no_error(plot(fit, what = "cv"))
+})
+
+test_that("plot.fbrglm errors on what='cv' when no cv.glmnet was attached", {
+    set.seed(83)
+    n <- 80
+    df <- data.frame(y = rnorm(n), x1 = rnorm(n), x2 = rnorm(n))
+    fit <- fbrglm(y ~ x1 + x2, data = df, family = "gaussian",
+                  lambda = "fix", lambda_value = 0.05)
+    expect_error(plot(fit, what = "cv"), "cv\\.glmnet")
 })
 
 test_that("plot.fbrglm errors when no fit is attached", {

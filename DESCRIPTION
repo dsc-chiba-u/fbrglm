@@ -1,6 +1,6 @@
 Package: fbrglm
 Title: Safe Formula-Based Regularized Generalized Linear Models
-Version: 0.0.1
+Version: 0.1.0
 Authors@R:
     person(given = "Koki",
            family = "Tsuyuzaki",
@@ -31,7 +31,9 @@ RoxygenNote: 7.3.3
 Imports:
     glmnet,
     stats,
-    graphics
+    graphics,
+    generics,
+    tibble
 Suggests:
     testthat (>= 3.0.0),
     knitr,

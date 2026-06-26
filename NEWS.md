@@ -1,3 +1,38 @@
+# fbrglm 0.1.0
+
+* New `tidy()` method (S3 method for `generics::tidy`) returning a
+  tibble with one row per coefficient (`term`, `estimate`, `nonzero`,
+  `lambda`). Rank-deficient columns surface as `NA` in `estimate`,
+  matching `coef()` / `summary()` conventions. For multinomial and
+  mgaussian fits the tibble is in long form with an extra `class`
+  or `response` column. Standard errors, z / t values, p-values,
+  and confidence intervals are intentionally omitted under
+  `infer = "none"`.
+
+* New `glance()` method returning a single-row tibble summarising
+  the fit: `family`, `lambda_rule`, `lambda`, `alpha`, `infer`,
+  `nobs` / `nobs_dropped` / `nobs_total`, `rank` / `rank_dropped` /
+  `rank_deficient`, `nonzero`, `deviance`, `cvm_at_lambda` /
+  `cvsd_at_lambda` (when a CV fit is attached), and `logLik` /
+  `AIC` / `BIC` columns kept for `broom` shape compatibility but
+  set to `NA` under the regularized estimator.
+
+* `plot.fbrglm()` is rewritten with a `what` argument. The new
+  default `what = "diagnostic"` shows `glm()`-style residual
+  diagnostics (Residuals vs Fitted, Normal Q-Q, Scale-Location)
+  using deviance residuals at the chosen lambda; the leverage /
+  Cook's-distance panels of `plot.lm()` are deliberately omitted
+  because the hat-matrix-based standardisation does not have a
+  canonical regularized analogue. `what = "path"` delegates to
+  `plot.glmnet()` for the regularization path (the previous
+  default); `what = "cv"` delegates to `plot.cv.glmnet()` for the
+  CV curve. The same call now also accepts the standard
+  `plot.lm()` arguments (`which`, `caption`, `sub.caption`, ...).
+
+* The fitted response vector is now stored on the fit as
+  `y_train`, parallel to the existing `x_train`, so internal
+  diagnostics do not need to re-run `model.frame()`.
+
 # fbrglm 0.0.1
 
 Initial CRAN release.
