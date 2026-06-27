@@ -16,16 +16,19 @@ title: "Safe Formula-Based Workflows for Regularized Generalized Linear Models i
 
 author:
   - name: "Koki Tsuyuzaki"
-    affiliation: "Data Science Core, Chiba University"
-    address: "1-33 Yayoi-cho, Inage-ku, Chiba 263-8522, Japan"
+    affiliation: "Chiba University`\\\\`{=latex} and RIKEN"
+    affiliation2: "Data Science Core, Chiba University`\\\\[6pt]`{=latex} Omics AI Research Team, Advanced General Intelligence for Science Program (AGIS), RIKEN TRIP Headquarters"
+    address: "`%`{=latex}"
     email: "koki.tsuyuzaki@gmail.com"
   - name: "Kentaro Sakamaki"
-    affiliation: "Faculty of Health Data Science, Juntendo University; Center for Next Generation of Community Health, Chiba University"
-    address:     "Japan"
+    affiliation: "Juntendo University`\\\\`{=latex} and Chiba University"
+    affiliation2: "Faculty of Health Data Science, Juntendo University`\\\\[6pt]`{=latex} Center for Next Generation of Community Health, Chiba University"
+    address: "`%`{=latex}"
     email:       "kentaro.sakamaki@gmail.com"
   - name: "Hiromu Nishiuchi"
-    affiliation: "Data Science Core, Chiba University"
-    address: "1-33 Yayoi-cho, Inage-ku, Chiba 263-8522, Japan"
+    affiliation: "Chiba University"
+    affiliation2: "Data Science Core, Chiba University"
+    address: "`%`{=latex}"
     email: "hiromunishiuchi@gmail.com"
 
 abstract: >

@@ -1,5 +1,18 @@
 # fbrglm
 
+[![CRAN_Status_Badge](https://www.r-pkg.org/badges/version/fbrglm)](https://cran.r-project.org/package=fbrglm)
+[![Downloads](https://cranlogs.r-pkg.org/badges/fbrglm)](https://cran.rstudio.com/package=fbrglm)
+[![Total Downloads](https://cranlogs.r-pkg.org/badges/grand-total/fbrglm?color=orange)](https://cran.rstudio.com/package=fbrglm)
+[![fbrglm status badge](https://dsc-chiba-u.r-universe.dev/badges/fbrglm)](https://dsc-chiba-u.r-universe.dev/fbrglm)
+[![:name status badge](https://dsc-chiba-u.r-universe.dev/badges/:name)](https://dsc-chiba-u.r-universe.dev)
+[![:registry status badge](https://dsc-chiba-u.r-universe.dev/badges/:registry)](https://github.com/r-universe/dsc-chiba-u)
+[![:total status badge](https://dsc-chiba-u.r-universe.dev/badges/:total)](https://dsc-chiba-u.r-universe.dev)
+[![R-CMD-check](https://github.com/dsc-chiba-u/fbrglm/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/dsc-chiba-u/fbrglm/actions/workflows/R-CMD-check.yaml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<!-- Zenodo DOI badge to be added once the dsc-chiba-u repository is
+     linked to Zenodo. -->
+<!-- JOSS status badge to be added once a JOSS paper is in review. -->
+
 Safe formula-based wrapper around
 [`glmnet`](https://cran.r-project.org/package=glmnet): bring `glm()`'s
 strict modeling-workflow semantics — formula + data in, predict-time
