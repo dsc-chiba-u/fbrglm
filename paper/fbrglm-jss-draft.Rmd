@@ -18,17 +18,17 @@ author:
   - name: "Koki Tsuyuzaki"
     affiliation: "Chiba University`\\\\`{=latex} and RIKEN"
     affiliation2: "Data Science Core, Chiba University`\\\\[6pt]`{=latex} Omics AI Research Team, Advanced General Intelligence for Science Program (AGIS), RIKEN TRIP Headquarters"
-    address: "`%`{=latex}"
+    address: "Chiba, Japan"
     email: "koki.tsuyuzaki@gmail.com"
   - name: "Kentaro Sakamaki"
     affiliation: "Juntendo University`\\\\`{=latex} and Chiba University"
     affiliation2: "Faculty of Health Data Science, Juntendo University`\\\\[6pt]`{=latex} Center for Next Generation of Community Health, Chiba University"
-    address: "`%`{=latex}"
+    address: "Tokyo, Japan"
     email:       "kentaro.sakamaki@gmail.com"
   - name: "Hiromu Nishiuchi"
     affiliation: "Chiba University"
     affiliation2: "Data Science Core, Chiba University"
-    address: "`%`{=latex}"
+    address: "Chiba, Japan"
     email: "hiromunishiuchi@gmail.com"
 
 abstract: >
@@ -307,7 +307,7 @@ hands to `predict()`. The standard example is a factor whose
 training data:
 
 ```{r demo-mismatch}
-library(fbrglm)
+library("fbrglm")
 set.seed(7)
 train <- data.frame(
     y  = rbinom(80, 1, 0.5),
@@ -954,7 +954,7 @@ cover one model from each row of Table 2.
 ## Linear regression
 
 ```{r ex-gaussian}
-library(fbrglm)
+library("fbrglm")
 set.seed(101)
 n <- 150
 dat <- data.frame(
@@ -1525,6 +1525,34 @@ data splitting and selective inference — and broader validation of
 the experimental family paths (Cox extensions in particular) can be
 added without losing this simplicity is the central question of the
 next milestone.
+
+# Computational details {.unnumbered}
+
+The results in this paper were produced with `R` version 4.5 or
+later [@R], `glmnet` 5.0+ [@friedman2010glmnet; @simon2011glmnetcox;
+@tay2023glmnetall], and `fbrglm` 0.1.0. The companion benchmark
+suite additionally uses `glmnetUtils` 1.1.9 [@glmnetUtils],
+`parsnip` 1.6.0 [@parsnip], `workflows` 1.3.0 [@workflows],
+`broom` 1.0.13 [@broom], `recipes` 1.3.3 [@recipes],
+`hardhat` 1.4.3 [@hardhat], and `MASS` 7.3+ for the negative
+binomial family. Random seeds are set in every chunk of this paper
+and in every script of the companion repository so the numerical
+results are exactly reproducible from the released sources. The
+manuscript is itself rendered from a single `R` Markdown source
+through the JSS pipeline described in
+`paper/README.md` of the package repository.
+
+# Acknowledgments {.unnumbered}
+
+We thank the authors of `glmnet` [@friedman2010glmnet;
+@simon2011glmnetcox; @tay2023glmnetall] for building and
+maintaining the computational engine fbrglm wraps, and the wider
+tidymodels community for the `broom` / `parsnip` / `workflows`
+ecosystem that fbrglm's S3 surface integrates with. We thank the
+Data Science Core, Chiba University, for institutional support, and
+the RIKEN TRIP Headquarters Advanced General Intelligence for
+Science (AGIS) Program for hosting the Omics AI Research Team
+during the development of this work.
 
 # Appendix A: Example S3 method output
 

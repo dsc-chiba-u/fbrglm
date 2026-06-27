@@ -116,6 +116,33 @@ src <- gsub("(× over raw)", "(ratio)", src, fixed = TRUE)
 ## the ASCII spelling so the body text reads naturally.
 src <- gsub("|Δ|", "|Delta|", src, fixed = TRUE)
 
+## --- JSS markup: `\pkg{}` for R package names, `\proglang{}` for the
+##     R language itself. The JSS style guide reserves these semantic
+##     macros so reviewers can verify the manuscript respects the
+##     journal's typographic conventions. Plain `\texttt{glmnet}`
+##     (the default pandoc gives) gets flagged; `\pkg{glmnet}` does
+##     not. We replace the exact backticked package-name token in the
+##     temp Rmd with Pandoc raw inline LaTeX so the resulting .tex
+##     emits the right command. The substitution is anchored on the
+##     standalone form `pkg` (not `pkg::function` or `library(pkg)`),
+##     so namespace-qualified mentions and code chunks are untouched.
+jss_pkgs <- c("fbrglm", "glmnet", "glmnetUtils", "parsnip",
+              "workflows", "broom")
+for (pkg in jss_pkgs) {
+    src <- gsub(paste0("`", pkg, "`"),
+                paste0("`\\pkg{", pkg, "}`{=latex}"),
+                src, fixed = TRUE)
+}
+
+## R as a programming language: only the standalone backticked form
+## `R` is targeted. The package's prose uses "R" as a natural-language
+## token in many places ("in R", "base R", "R~4.x"); rewriting all of
+## those is too aggressive. Backticked `R` is the deliberate marker
+## we already place when we mean "the R language as code".
+src <- gsub("`R`",
+            "`\\proglang{R}`{=latex}",
+            src, fixed = TRUE)
+
 ## Greek-letter substitutes are wrapped in `\texorpdfstring{...}{...}`
 ## so they survive moving arguments such as section headings and PDF
 ## bookmarks; the plain ASCII spelling is used for bookmark text and
