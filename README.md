@@ -11,7 +11,6 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 <!-- Zenodo DOI badge to be added once the dsc-chiba-u repository is
      linked to Zenodo. -->
-<!-- JOSS status badge to be added once a JOSS paper is in review. -->
 
 Safe formula-based wrapper around
 [`glmnet`](https://cran.r-project.org/package=glmnet): bring `glm()`'s
