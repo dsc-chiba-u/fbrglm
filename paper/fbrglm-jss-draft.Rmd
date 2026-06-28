@@ -801,8 +801,8 @@ accepts:
 
 - the six character strings `"gaussian"`, `"binomial"`, `"poisson"`,
   `"cox"`, `"multinomial"`, `"mgaussian"`;
-- any GLM family object (e.g. `stats::Gamma(link = "log")`,
-  `MASS::negative.binomial(theta = ...)`);
+- any GLM family object (e.g. `stats::Gamma(link = "log")` or
+  `MASS::negative.binomial(...)`);
 - a bare family generator (e.g. `binomial`) — fbrglm calls it to get
   a family object.
 
@@ -1343,9 +1343,9 @@ knitr::kable(
 Method roles, repeated across scenarios: `glmnet_raw` is the fastest
 matrix API; `fbrglm` is a lightweight formula interface; `glmnetUtils`
 is a formula interface; `parsnip_workflow` is a full workflow
-framework. Full per-iteration and per-method rows live in
-`results/raw/runtime_small_raw.csv` and
-`results/summary/runtime_small.csv` of the experiments repo.
+framework. Full per-iteration and per-method rows live under the
+`raw/` and `summary/` directories of the experiments repo (file
+names `runtime_small_raw.csv` and `runtime_small.csv` respectively).
 
 ![Runtime benchmark across four scenarios; bars are median of five iterations from `bench::mark()`. This is a small benchmark, not a universal performance claim.](../../fbrglm-experiments/results/figures/runtime_small.png)
 
@@ -1439,10 +1439,11 @@ The pipeline produces (paths relative to the experiments-repo root):
 - `summary/prediction_failures_small.csv` and
   `summary/runtime_small.csv` — small-benchmark summaries.
 - `raw/runtime_small_raw.csv` — per-iteration timings.
-- Three paste-ready manuscript summaries under `summary/`,
-  one per table: `manuscript_prediction_table.{csv,md}`,
-  `manuscript_runtime_table.{csv,md}`, and
-  `manuscript_family_table.{csv,md}`.
+- Three paste-ready manuscript summaries under `summary/`, one per
+  table, named
+  `manuscript_<kind>_table.{csv,md}`
+  with `<kind>` taking the values `prediction`, `runtime`, and
+  `family`.
 - Two PNG figures under `figures/`:
   `prediction_failures_small.png` and `runtime_small.png`.
 
