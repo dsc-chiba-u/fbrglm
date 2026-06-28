@@ -1,6 +1,7 @@
 ^LICENSE\.md$
 ^TODO\.md$
 ^cran-comments\.md$
+^Dockerfile$
 ^\.gitignore$
 ^\.github$
 ^\.Rproj\.user$

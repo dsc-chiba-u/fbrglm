@@ -9,6 +9,7 @@
 [![:registry status badge](https://dsc-chiba-u.r-universe.dev/badges/:registry)](https://github.com/r-universe/dsc-chiba-u)
 [![:total status badge](https://dsc-chiba-u.r-universe.dev/badges/:total)](https://dsc-chiba-u.r-universe.dev)
 [![R-CMD-check](https://github.com/dsc-chiba-u/fbrglm/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/dsc-chiba-u/fbrglm/actions/workflows/R-CMD-check.yaml)
+[![DockerHub/GHCR](https://github.com/dsc-chiba-u/fbrglm/actions/workflows/build_test_push.yml/badge.svg)](https://github.com/dsc-chiba-u/fbrglm/actions/workflows/build_test_push.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Safe formula-based wrapper around
