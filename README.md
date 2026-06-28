@@ -1,5 +1,6 @@
 # fbrglm
 
+[![DOI](https://zenodo.org/badge/1263438696.svg)](https://doi.org/10.5281/zenodo.21015223)
 [![CRAN_Status_Badge](https://www.r-pkg.org/badges/version/fbrglm)](https://cran.r-project.org/package=fbrglm)
 [![Downloads](https://cranlogs.r-pkg.org/badges/fbrglm)](https://cran.rstudio.com/package=fbrglm)
 [![Total Downloads](https://cranlogs.r-pkg.org/badges/grand-total/fbrglm?color=orange)](https://cran.rstudio.com/package=fbrglm)
@@ -9,8 +10,6 @@
 [![:total status badge](https://dsc-chiba-u.r-universe.dev/badges/:total)](https://dsc-chiba-u.r-universe.dev)
 [![R-CMD-check](https://github.com/dsc-chiba-u/fbrglm/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/dsc-chiba-u/fbrglm/actions/workflows/R-CMD-check.yaml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-<!-- Zenodo DOI badge to be added once the dsc-chiba-u repository is
-     linked to Zenodo. -->
 
 Safe formula-based wrapper around
 [`glmnet`](https://cran.r-project.org/package=glmnet): bring `glm()`'s
