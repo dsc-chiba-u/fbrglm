@@ -52,7 +52,7 @@ abstract: >
   classical SE / z / p / CI under `infer = "none"` — to the full
   `glmnet` family surface (`gaussian`, `binomial`, `poisson`, `cox`,
   `multinomial`, `mgaussian`, plus arbitrary GLM family objects such as
-  `stats::Gamma(link = "log")` or `MASS::negative.binomial(theta = ...)`).
+  `stats::Gamma(link = "log")` or `MASS::negative.binomial(...)`).
   Predictions are bit-identical to a hand-built raw-`glmnet` call across
   all eight families tested in the companion benchmark suite, which also
   compares fbrglm to `glmnetUtils` and a `parsnip` / `workflows`
@@ -801,8 +801,8 @@ accepts:
 
 - the six character strings `"gaussian"`, `"binomial"`, `"poisson"`,
   `"cox"`, `"multinomial"`, `"mgaussian"`;
-- any GLM family object (e.g. `stats::Gamma(link = "log")` or
-  `MASS::negative.binomial(...)`);
+- any GLM family object, e.g.
+  `stats::Gamma(link = "log")` or `MASS::negative.binomial(...)`;
 - a bare family generator (e.g. `binomial`) — fbrglm calls it to get
   a family object.
 
