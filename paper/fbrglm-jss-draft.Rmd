@@ -549,7 +549,7 @@ knitr::kable(
     col.names = c("package", "interface", "backend",
                   "prediction consistency", "family breadth"),
     align = c("l", "l", "l", "l", "l"),
-    caption = "Table 1: Related software in the regularized GLM space."
+    caption = "Related software in the regularized GLM space."
 )
 ```
 
@@ -930,7 +930,7 @@ knitr::kable(
     col.names = c("model", "family argument", "response", "predict output",
                   "status", "caveat"),
     align = c("l", "l", "l", "l", "l", "l"),
-    caption = "Table 2: Family argument forms accepted by fbrglm and their status."
+    caption = "Family argument forms accepted by fbrglm and their status."
 )
 ```
 
@@ -1193,7 +1193,7 @@ Factor-level mismatches between training and prediction data come in
 two directions, and a wrapper that aims for `glm()`-strict semantics
 needs to handle both. We probe each method on two binomial datasets.
 
-**Scenario A — narrowed test (Table 3a).** Training has factor `g`
+**Scenario A — narrowed test (Table 3).** Training has factor `g`
 with levels `A / B / C / D`; the test factor is constructed with the
 narrower level set `A / B`. The "missing" levels just do not appear
 in the test data; the right behaviour is to produce a design matrix
@@ -1226,11 +1226,11 @@ knitr::kable(
     pred_show, format = "html", escape = TRUE, row.names = FALSE,
     col.names = c("method", "result", "burden", "note"),
     align = c("l", "l", "l", "l"),
-    caption = "Table 3a: Behaviour at predict time when the test factor is *narrower* than training (train: A/B/C/D, test: A/B)."
+    caption = "Behaviour at predict time when the test factor is *narrower* than training (train: A/B/C/D, test: A/B)."
 )
 ```
 
-Both `Failure` rows in Table 3a produce a `glmnet` runtime error of
+Both `Failure` rows in Table 3 produce a `glmnet` runtime error of
 the form *"The number of variables in newx must be N"*. `glmnetUtils`
 provides an opt-in escape: passing `use.model.frame = TRUE` switches
 the wrapper to a path that builds a model frame and carries `xlevels`
@@ -1239,7 +1239,7 @@ and `glmnetUtils` with the model-frame option all succeed
 automatically; raw `glmnet` succeeds only when the caller manually
 re-levels the test factor before calling `model.matrix()`.
 
-**Scenario B — novel test levels (Table 3b).** The dataset is
+**Scenario B — novel test levels (Table 4).** The dataset is
 flipped: training has factor `g` with levels `A / B`, the test
 factor with `A / B / C / D`. Now the test carries values the trained
 model has never seen. The reference behaviour for this case is
@@ -1274,11 +1274,11 @@ knitr::kable(
     pred_novel_show, format = "html", escape = TRUE, row.names = FALSE,
     col.names = c("method", "result", "burden", "note"),
     align = c("l", "l", "l", "l"),
-    caption = "Table 3b: Behaviour at predict time when the test factor carries *novel* levels not seen in training (train: A/B, test: A/B/C/D)."
+    caption = "Behaviour at predict time when the test factor carries *novel* levels not seen in training (train: A/B, test: A/B/C/D)."
 )
 ```
 
-Three distinct response shapes appear in Table 3b. `fbrglm`'s default
+Three distinct response shapes appear in Table 4. `fbrglm`'s default
 and `glmnetUtils` with `use.model.frame = TRUE` both reproduce
 `predict.glm()`'s error verbatim — that is the safe-by-default
 behaviour `glm()` users expect. The default `glmnetUtils` path and a
@@ -1300,7 +1300,7 @@ preserved unchanged.
 
 Fit + predict wall-clock on a small grid of `(n, p_numeric, n_factor,
 n_levels)` combinations, fixed λ = 0.05, median of 5 iterations from
-`bench::mark()`. The compact summary in Table 4 reports
+`bench::mark()`. The compact summary in Table 5 reports
 `glmnet_raw`'s median in milliseconds and the per-scenario ratio of
 each other method's median to it; values larger than 1× are slower
 than raw `glmnet`.
@@ -1332,7 +1332,7 @@ knitr::kable(
                   "glmnetUtils (× over raw)",
                   "parsnip_workflow (× over raw)"),
     align = c("l", "r", "r", "r", "r"),
-    caption = "Table 4: Runtime ratios across scenarios."
+    caption = "Runtime ratios across scenarios."
 )
 ```
 
@@ -1367,7 +1367,7 @@ fixed-θ negative binomial (via
 `family = "cox"` with `Surv(time, status) ~ ...`), `multinomial`, and
 `mgaussian` — are each fit at λ = 0.05 with both fbrglm and a
 hand-built raw `glmnet` call on the same data, and the predictions
-are compared (Table 5).
+are compared (Table 6).
 
 ```{r family-table, echo = FALSE}
 fam_df <- utils::read.csv(
@@ -1383,7 +1383,7 @@ knitr::kable(
     col.names = c("family", "response", "fbrglm vs raw",
                   "fbrglm (ms)", "raw (ms)", "note"),
     align = c("l", "l", "r", "r", "r", "l"),
-    caption = "Table 5: Family-wide parity sweep between fbrglm and raw glmnet."
+    caption = "Family-wide parity sweep between fbrglm and raw glmnet."
 )
 ```
 
