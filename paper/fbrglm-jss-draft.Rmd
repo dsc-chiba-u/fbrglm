@@ -542,19 +542,13 @@ rel_df <- data.frame(
                     "inherits glmnet's family list",
                     "engine-specific",
                     "full glmnet family list (Section 6)"),
-    notes       = c("classical SE / p-values",
-                    "matrix interface; no formula",
-                    "thin formula wrapper",
-                    "full modelling framework; broader scope",
-                    "glm-like; no classical SE under infer='none'"),
     stringsAsFactors = FALSE
 )
 knitr::kable(
     rel_df, format = "html", escape = TRUE, row.names = FALSE,
     col.names = c("package", "interface", "backend",
-                  "prediction consistency", "family breadth",
-                  "notes"),
-    align = c("l", "l", "l", "l", "l", "l"),
+                  "prediction consistency", "family breadth"),
+    align = c("l", "l", "l", "l", "l"),
     caption = "Table 1: Related software in the regularized GLM space."
 )
 ```
@@ -901,11 +895,11 @@ fam_support <- data.frame(
               "Multinomial regression",
               "Multi-response Gaussian"),
     family = c('"gaussian"', '"binomial"', '"poisson"',
-                "stats::Gamma(link='log')",
-                "MASS::negative.binomial(theta=...)",
-                '"cox" + Surv(time,status) ~ ...',
+                "stats::Gamma()",
+                "MASS::negative.binomial()",
+                '"cox" + Surv(...) ~ ...',
                 '"multinomial"',
-                '"mgaussian" + cbind(y1, y2) ~ ...'),
+                '"mgaussian" + cbind(...) ~ ...'),
     response = c("continuous", "binary (0/1)", "count",
                  "positive continuous", "overdispersed count",
                  "Surv object", "multiclass factor",
