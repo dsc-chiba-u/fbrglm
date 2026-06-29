@@ -164,20 +164,26 @@ src <- gsub(", echo = FALSE\\}", ", echo = FALSE, results = 'asis'}",
 
 ## --- 3.75 Several of the manuscript tables have enough columns to
 ##         overflow the JSS page width when rendered as a plain LaTeX
-##         tabular. Inject a tiny `.jss_kable` wrapper that, for the
-##         LaTeX path, wraps the rendered tabular in `\resizebox{...}{!}`
-##         so the table is scaled down to the text width. This is done
-##         without going through kableExtra so the JSS template's
-##         `tabu.sty` (which requires xcolor with the `[table]` option
-##         to define `\CT@setup`) does not have to be touched.
-##         For non-LaTeX builds the wrapper is a no-op. The wrapper is
-##         appended to the existing setup chunk; then every
-##         `knitr::kable(` call in the body is rewritten to
+##         tabular. Inject a tiny `.jss_kable` wrapper that
+##         post-processes the LaTeX output: replace each plain
+##         left-aligned column (`l`) in the tabular column spec with a
+##         fixed-width `p{...}` column (text-width / column-count),
+##         so cells wrap to multiple lines instead of pushing the
+##         tabular past the page width. This keeps the font at
+##         \normalsize, unlike the older `\resizebox` approach which
+##         shrank the glyphs together with the rest of the table. As
+##         a safety net for tables that would still exceed
+##         `\linewidth` (e.g.~the `\caption` line itself), the same
+##         `\resizebox` wrap is applied around the (now-narrow)
+##         tabular; for tables that already fit it is a no-op.
+##         For non-LaTeX builds the whole wrapper is a no-op. The
+##         wrapper is appended to the existing setup chunk; then
+##         every `knitr::kable(` call in the body is rewritten to
 ##         `.jss_kable(`. Rewrite first, inject second — if the helper
 ##         is injected first, the global rewrite would replace the
-##         `knitr::kable(...)` inside it as well, producing an infinitely
-##         recursive `.jss_kable` -> `.jss_kable` chain that overflows
-##         the evaluation stack at render time.
+##         `knitr::kable(...)` inside it as well, producing an
+##         infinitely recursive `.jss_kable` -> `.jss_kable` chain
+##         that overflows the evaluation stack at render time.
 src <- gsub("knitr::kable(", ".jss_kable(", src, fixed = TRUE)
 kable_helper <- paste(
     "",
@@ -188,6 +194,27 @@ kable_helper <- paste(
     "    pat <- \"(?s)(\\\\\\\\begin\\\\{tabular\\\\}.*?\\\\\\\\end\\\\{tabular\\\\})\"",
     "    m <- regmatches(raw, regexpr(pat, raw, perl = TRUE))",
     "    if (!length(m)) return(k)",
+    "    ## Re-write the tabular column spec to use fixed-width p{}",
+    "    ## columns whenever the table has four or more columns; the",
+    "    ## three-column tables already fit at their natural width.",
+    "    spec <- regmatches(m, regexpr(\"\\\\\\\\begin\\\\{tabular\\\\}(\\\\[[^]]*\\\\])?\\\\{[^}]+\\\\}\", m, perl = TRUE))",
+    "    if (length(spec)) {",
+    "        cols_raw <- sub(\".*\\\\{([^}]+)\\\\}$\", \"\\\\1\", spec[1])",
+    "        col_codes <- strsplit(gsub(\"\\\\|\", \"\", cols_raw), \"\")[[1]]",
+    "        col_codes <- col_codes[col_codes %in% c(\"l\", \"r\", \"c\")]",
+    "        n_cols <- length(col_codes)",
+    "        if (n_cols >= 4L) {",
+    "            col_w <- sprintf(\"%.2fcm\", 15.5 / n_cols)",
+    "            one_col <- paste0(\"p{\", col_w, \"}\")",
+    "            new_cols <- paste(rep(one_col, n_cols), collapse = \"|\")",
+    "            new_spec <- paste0(\"{\", new_cols, \"}\")",
+    "            new_spec <- sub(\"\\\\{[^}]+\\\\}$\", new_spec,",
+    "                            spec[1], perl = TRUE)",
+    "            m_new <- sub(spec[1], new_spec, m, fixed = TRUE)",
+    "            raw <- sub(m, m_new, raw, fixed = TRUE)",
+    "            m   <- m_new",
+    "        }",
+    "    }",
     "    box_open <- paste0(",
     "        \"\\\\resizebox{\\\\ifdim\\\\width>\\\\linewidth\",",
     "        \"\\\\linewidth\\\\else\\\\width\\\\fi}{!}{%\\n\"",
