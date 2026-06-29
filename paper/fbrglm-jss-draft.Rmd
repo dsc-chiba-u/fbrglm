@@ -801,8 +801,10 @@ accepts:
 
 - the six character strings `"gaussian"`, `"binomial"`, `"poisson"`,
   `"cox"`, `"multinomial"`, `"mgaussian"`;
-- any GLM family object such as `stats::Gamma(...)` or
-  `MASS::negative.binomial(...)`;
+- any GLM family object that `glmnet` accepts; for example:
+    - `stats::Gamma(link = "log")` for Gamma regression;
+    - `MASS::negative.binomial(theta = ...)` for fixed-theta
+      negative binomial;
 - a bare family generator (e.g. `binomial`) — fbrglm calls it to get
   a family object.
 
