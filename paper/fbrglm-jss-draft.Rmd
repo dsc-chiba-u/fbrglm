@@ -1410,8 +1410,11 @@ than as a failure.
 # Replication material
 
 The benchmark numbers, figures, and manuscript tables can be
-reproduced from a fresh checkout of
-<https://github.com/dsc-chiba-u/fbrglm-experiments>. Path resolution
+reproduced from a fresh checkout of the companion repository
+[@fbrglm-experiments], <https://github.com/dsc-chiba-u/fbrglm-experiments>.
+The 0.1.0 snapshot of that repository is archived at Zenodo under
+DOI [10.5281/zenodo.21016035](https://doi.org/10.5281/zenodo.21016035).
+Path resolution
 inside the scripts has three priorities — the `FBRGLM_EXP_ROOT`
 environment variable, the current working directory if it contains
 `environment.yml` and an `R/` subdirectory, and a development-time
