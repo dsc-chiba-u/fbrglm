@@ -26,8 +26,8 @@ author:
     address: "Tokyo, Japan"
     email:       "kentaro.sakamaki@gmail.com"
   - name: "Hiromu Nishiuchi"
-    affiliation: "Chiba University"
-    affiliation2: "Data Science Core, Chiba University"
+    affiliation: "Chiba University`\\\\`{=latex} and Chuo University"
+    affiliation2: "Data Science Core, Chiba University`\\\\[6pt]`{=latex} Graduate School of Science and Engineering, Chuo University"
     address: "Chiba, Japan"
     email: "hiromunishiuchi@gmail.com"
 
