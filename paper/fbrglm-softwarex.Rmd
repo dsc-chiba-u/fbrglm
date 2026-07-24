@@ -130,12 +130,10 @@ because the mismatch is between two independently-constructed design
 matrices rather than between the model and its input.
 
 **Rank deficiency.** `stats::glm()` reports rank-deficient columns
-with `NA` coefficients and a warning; `glmnet` accepts collinear
-columns silently and returns numerically identifiable but statistically
-non-interpretable estimates. A "zero" coefficient in a raw `glmnet`
-fit can mean either "shrunk to zero by the penalty" or "the column
-was not identifiable in the design", and the two are impossible to
-distinguish from the fit object alone.
+with `NA` coefficients; `glmnet` accepts collinear columns silently.
+A "zero" coefficient in a raw `glmnet` fit can therefore mean either
+"shrunk to zero by the penalty" or "not identifiable in the design",
+and the two are impossible to distinguish from the fit object alone.
 
 **No inference contract.** Post-selection standard errors for
 regularized fits are an unresolved statistical problem
@@ -149,17 +147,12 @@ quantities are unreliable.
 model recipe onto the fit object, restores `glm()`'s rank-deficient
 NA convention, and prints an explicit inference policy in place of
 untrustworthy classical statistics. The underlying `glmnet` and
-`cv.glmnet` calls are unchanged: `fbrglm` supplies the safety layer
-around them without replacing the estimator.
-
-Interface / workflow packages are an established category of
-scientific-software contribution. The `tidyomics` ecosystem
-[@hutchison2024tidyomics], for example, was recognized in *Nature
-Methods* not for introducing new estimators but for imposing a unified
-interface across pre-existing tools. `fbrglm` occupies the analogous
-role for `glmnet`: the estimator is unchanged, but the safety
-guarantees, error semantics, and reproducibility contract are what the
-user gets.
+`cv.glmnet` calls are unchanged. Interface / workflow packages are
+an established category of scientific-software contribution — the
+`tidyomics` ecosystem [@hutchison2024tidyomics], for example, was
+recognized in *Nature Methods* not for introducing new estimators
+but for imposing a unified interface across pre-existing tools.
+`fbrglm` occupies the analogous role for `glmnet`.
 
 # Software description
 
@@ -358,37 +351,81 @@ formula-first pattern.
 
 # Impact
 
+## Improvement to existing regularized-GLM analyses
+
 `fbrglm` is directly applicable to any project that uses `glmnet` for
 regularized GLMs — from small ad-hoc analyses to production scoring
-pipelines. The behavioral changes relative to a hand-built
-`glmnet` call are:
+pipelines. Four categories of failure that are common in raw-`glmnet`
+code disappear at the API level:
 
 - **Predict-time robustness.** Factor-level mismatch between training
-  and scoring data becomes an explicit, checked error (or a controlled
-  `NA` under an opt-in), rather than a low-level `glmnet` crash.
-- **Interpretability of "zero".** Rank-deficient columns now show as
+  and scoring data becomes an explicit, checked error — or a
+  controlled `NA` under `on_new_levels = "na"` — rather than a
+  low-level `glmnet` crash. In the companion benchmark
+  [@fbrglm-experiments] this class of failure caused 3 of 5 tested
+  workflows to fail on a narrowed test factor; `fbrglm` and the
+  hardhat-backed `parsnip` workflow are the two paths that survive.
+- **Interpretability of "zero".** Rank-deficient columns show as
   `NA` coefficients (`glm()` convention), so a numeric zero in the
-  coefficient table unambiguously means "shrunk by the penalty".
+  coefficient table unambiguously means "shrunk by the penalty"
+  rather than "not identifiable in the design".
 - **Inference contract.** The regularization contract is surfaced in
   every `summary()` call, discouraging accidental use of unreliable
-  classical Wald statistics for penalized fits.
-- **Interoperability.** `broom` methods (`tidy`, `glance`) are
+  classical Wald statistics for penalized fits and pointing users to
+  post-selection inference [@tibshirani2016selective].
+- **Interoperability.** `broom` [@broom] methods (`tidy`, `glance`) are
   provided directly; `as_glmnet()` and `as_cv_glmnet()` return the
   underlying objects unchanged, so downstream tooling that expects a
   raw `glmnet` handle still works.
 
-A companion reproducibility study [@fbrglm-experiments] verifies that
-`fbrglm` produces bit-identical predictions to a hand-built
-raw-`glmnet` call across all eight supported families, matches
-`cv.glmnet` under fixed `foldid` for `lambda = "cv_min"` and
-`"cv_1se"`, and, in a small binomial runtime grid, sits within
-roughly 2–3× the raw-`glmnet` cost — comparable to `glmnetUtils`
-[@glmnetUtils] and consistently lighter than the `parsnip`
-[@parsnip] / `workflows` [@workflows] pipeline in the tested setting.
-These numbers are illustrative rather than a general performance
-claim, but they establish that the safety layer is not a numerical
-compromise. The release used in this study is archived at
-[@fbrglm].
+## Research workflows enabled
+
+The safety layer changes what regularized GLMs can be trusted with,
+not what they compute. Two workflow patterns that were previously
+labor-intensive become routine: **hand-off between exploration and
+production scoring**, where a serialized fit is applied to arriving
+batches without re-materializing the training design matrix; and
+**family-wide analyses**, where a study comparing, e.g., binomial,
+negative binomial, and Gamma fits on the same cohort no longer needs
+a family-specific wrapper per fit — the eight supported families all
+share the `regularized_glm` return type. The companion benchmark
+[@fbrglm-experiments] uses this uniformity for an
+$8 \times 5 = 40$-cell parity sweep against raw `glmnet`,
+`glmnetUtils` [@glmnetUtils], and a `parsnip` [@parsnip] /
+`workflows` [@workflows] pipeline; every `fbrglm` cell is
+bit-identical to raw `glmnet`.
+
+## Changes in daily practice
+
+For a working analyst, the diff against a raw-`glmnet` script is
+concentrated in what used to be pure bookkeeping: `model.matrix()`
+calls, their re-materialization at predict time, manual `xlevels`
+maintenance, and per-family dispatch. All of these move into the
+package, leaving the analysis script to say `formula + data + family`
+and read back a `regularized_glm` object that behaves like a `glm`
+fit for `print`, `summary`, `coef`, `predict`, `nobs`, `plot`, and
+`broom` [@broom]. For tidymodels teams, the `as_glmnet()` /
+`as_cv_glmnet()` accessors keep `fbrglm` drop-in with existing
+downstream tooling.
+
+## Adoption and reproducibility
+
+`fbrglm` v0.0.1 was released to CRAN on 2026-07-09 and updated to
+v0.1.0 on 2026-07-14; the package has recorded on the order of 200
+CRAN downloads across the two releases in its first weeks. Continuous
+integration on GitHub runs `R CMD check` on four platforms per push,
+and a companion Docker image is republished to Docker Hub and GHCR
+on every merge. The runtime overhead of the safety layer is modest:
+in a small binomial runtime grid, `fbrglm` sits within roughly
+2–3$\times$ the raw-`glmnet` cost — comparable to `glmnetUtils` and
+consistently lighter than the `parsnip` / `workflows` path in the
+tested setting; these numbers are illustrative rather than a general
+benchmark, but they establish that the safety layer is not a numerical
+compromise. The release used in the companion study is archived at
+[@fbrglm]; the corresponding replication material is at
+[@fbrglm-experiments]. The MIT license permits both academic and
+commercial use; no commercial deployments are known to the authors at
+the time of writing.
 
 # Conclusions
 
