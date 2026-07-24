@@ -1,0 +1,364 @@
+---
+title: "fbrglm: Safe Formula-Based Workflows for Regularized Generalized Linear Models in R"
+author:
+  - name: "Koki Tsuyuzaki"
+    email: "koki.tsuyuzaki@gmail.com"
+    affiliation: chibaDSC
+    correspondingauthor: true
+    footnote: 1
+  - name: "Kentaro Sakamaki"
+    email: "kentaro.sakamaki@gmail.com"
+    affiliation: juntendo
+  - name: "Hiromu Nishiuchi"
+    email: "hiromunishiuchi@gmail.com"
+    affiliation: chibaDSC
+address:
+  - code: chibaDSC
+    organization: "Data Science Core, Chiba University"
+    addressline: "1-33 Yayoi-cho, Inage-ku"
+    city: Chiba
+    postcode: "263-8522"
+    country: Japan
+  - code: juntendo
+    organization: "Faculty of Health Data Science, Juntendo University"
+    city: Tokyo
+    country: Japan
+footnote:
+  - code: 1
+    text: "Also affiliated with the Omics AI Research Team, Advanced General Intelligence for Science Program (AGIS), RIKEN TRIP Headquarters, Wako, Japan."
+abstract: |
+  `glmnet` is the de facto standard for regularized generalized linear
+  models in R, but its matrix-shaped API hands factor encoding,
+  contrasts, rank handling, and prediction-time design-matrix
+  reconstruction back to the caller — producing silent predict-time
+  crashes on train / test factor drift, and zero coefficients that
+  conflate penalty shrinkage with non-identifiability. `fbrglm` is a
+  formula-based wrapper that pairs `glmnet` with a `glm()`-compatible
+  workflow: frozen `terms` / `xlevels` / `contrasts` on the fit
+  object, NA coefficients for rank-deficient columns, and an inference
+  policy that suppresses classical SE / z / p / CI under
+  regularization. Predictions are bit-identical to raw `glmnet` across
+  all eight supported families.
+keywords:
+  - regularized generalized linear models
+  - glmnet
+  - formula interface
+  - reproducibility
+  - R
+journal: "SoftwareX"
+date: "`r Sys.Date()`"
+linenumbers: false
+numbersections: true
+bibliography: references.bib
+biblio-style: elsarticle-num
+classoption: "preprint, 3p"
+output:
+  rticles::elsevier_article:
+    keep_tex: true
+    citation_package: natbib
+preamble: |
+  \usepackage{booktabs}
+  \usepackage{longtable}
+  \usepackage{array}
+  \providecommand{\pkg}[1]{\texttt{#1}}
+  \providecommand{\proglang}[1]{\textsf{#1}}
+  \providecommand{\code}[1]{\texttt{#1}}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+    collapse = TRUE,
+    comment  = "#>",
+    fig.width  = 6,
+    fig.height = 4,
+    echo = TRUE
+)
+```
+
+```{r metadata, echo = FALSE}
+metadata_df <- data.frame(
+  Nr = paste0("C", 1:8),
+  Description = c(
+    "Current code version",
+    "Permanent link to code / repository used for this code version",
+    "Legal code license",
+    "Code versioning system used",
+    "Software code languages, tools and services used",
+    "Compilation requirements, operating environments and dependencies",
+    "If available, link to developer documentation / manual",
+    "Support email for questions"
+  ),
+  Value = c(
+    "v0.1.0",
+    "https://github.com/dsc-chiba-u/fbrglm",
+    "MIT",
+    "git",
+    "R",
+    "R (>= 4.0); glmnet, stats, graphics, generics, tibble",
+    "https://CRAN.R-project.org/package=fbrglm",
+    "koki.tsuyuzaki@gmail.com"
+  ),
+  stringsAsFactors = FALSE
+)
+knitr::kable(metadata_df,
+             col.names = c("Nr", "Code metadata description", "Metadata"),
+             caption = "Code metadata (mandatory per SoftwareX template).")
+```
+
+# Motivation and significance
+
+Regularized generalized linear models (GLMs) — the L1, L2 and
+elastic-net penalized fits provided by `glmnet` [@friedman2010glmnet;
+@simon2011glmnetcox; @tay2023glmnetall] — are a workhorse of applied
+statistics in R. `glmnet`'s numerical core is mature, but its user
+interface is deliberately minimal: the caller supplies a
+pre-constructed numeric design matrix `x` and a response `y`, and every
+step that `stats::glm()` normally handles on the user's behalf —
+formula parsing, factor encoding, contrast bookkeeping, complete-case
+filtering, rank checking, and prediction-time design-matrix
+reconstruction — is pushed to the caller. In practice this yields
+three recurring hazards.
+
+**Predict-time drift.** When the training design matrix is built by
+`model.matrix(~ ., data = train)` and the test design matrix by
+`model.matrix(~ ., data = test)` independently, a factor level that
+appears only in `train` (or only in `test`) silently produces
+different numbers of columns, and `predict.glmnet` fails with a
+low-level "number of variables in newx must be N" error. In hosted
+scoring pipelines this failure mode is common and hard to debug
+because the mismatch is between two independently-constructed design
+matrices rather than between the model and its input.
+
+**Rank deficiency.** `stats::glm()` reports rank-deficient columns
+with `NA` coefficients and a warning; `glmnet` accepts collinear
+columns silently and returns numerically identifiable but statistically
+non-interpretable estimates. A "zero" coefficient in a raw `glmnet`
+fit can mean either "shrunk to zero by the penalty" or "the column
+was not identifiable in the design", and the two are impossible to
+distinguish from the fit object alone.
+
+**No inference contract.** Post-selection standard errors for
+regularized fits are an unresolved statistical problem
+[@tibshirani2016selective], yet callers routinely bolt classical
+SE / z / p / CI onto `glmnet` coefficients using the raw penalized
+Hessian. Existing wrappers give no explicit signal that these
+quantities are unreliable.
+
+`fbrglm` addresses all three by wrapping `glmnet` behind a
+`glm()`-compatible formula interface that freezes the training-time
+model recipe onto the fit object, restores `glm()`'s rank-deficient
+NA convention, and prints an explicit inference policy in place of
+untrustworthy classical statistics. The underlying `glmnet` and
+`cv.glmnet` calls are unchanged: `fbrglm` supplies the safety layer
+around them without replacing the estimator.
+
+Interface / workflow packages are an established category of
+scientific-software contribution. The `tidyomics` ecosystem
+[@hutchison2024tidyomics], for example, was recognized in *Nature
+Methods* not for introducing new estimators but for imposing a unified
+interface across pre-existing tools. `fbrglm` occupies the analogous
+role for `glmnet`: the estimator is unchanged, but the safety
+guarantees, error semantics, and reproducibility contract are what the
+user gets.
+
+# Software description
+
+## Software architecture
+
+`fbrglm` exposes two user-facing entry points — `fbrglm()` for a fixed
+grid of `lambda` values and its `lambda = "cv_min"` / `"cv_1se"`
+shortcuts that delegate to `cv.glmnet` — and a family of `glm()`-style
+S3 methods that operate on the returned `regularized_glm` object.
+
+`fbrglm()` parses the formula against the training data, extracts the
+`terms` object, `xlevels` (factor levels seen at fit time), and
+`contrasts`, builds the numeric design matrix, and hands the pair
+`(x, y)` to `glmnet::glmnet` (or `glmnet::cv.glmnet`) verbatim. It
+then wraps the returned `glmnet` (or `cv.glmnet`) object together
+with the frozen model recipe, a rank check performed by QR-pivot on
+the column-centered design matrix (`tol = 1e-7`, matching the
+convention used inside `stats::glm.fit`), and a small `nobs_info`
+bookkeeping record (`n_total` / `n_dropped_missing` / `n_used`) into a
+single `regularized_glm` object.
+
+## Software functionalities
+
+Table 1 lists the S3 methods that operate on a `regularized_glm`.
+Each method has direct `glm()` semantics.
+
+```{r methods-table, echo = FALSE}
+methods_df <- data.frame(
+  Method    = c("print", "summary", "coef", "predict", "nobs",
+                "plot", "tidy", "glance",
+                "as_glmnet", "as_cv_glmnet"),
+  Purpose   = c(
+    "compact display of family, lambda, and nobs_info",
+    "coefficient table with NA for rank-deficient columns and an explicit inference-policy notice",
+    "coefficient vector at the selected lambda; NA preserved for dropped columns",
+    "reconstructs the design matrix from stored terms / xlevels / contrasts; supports on_new_levels = 'error' (default) or 'na'",
+    "returns n_used from nobs_info",
+    "diagnostic residual plots (default), or the underlying glmnet coefficient path / cv.glmnet curve",
+    "broom-compatible tidy tibble of coefficients",
+    "broom-compatible one-row model-level tibble",
+    "accessor returning the underlying glmnet object verbatim",
+    "accessor returning the underlying cv.glmnet object when lambda selection used CV"
+  ),
+  stringsAsFactors = FALSE
+)
+knitr::kable(methods_df, caption = "S3 methods defined on the regularized_glm class.")
+```
+
+Supported model families are the full `glmnet` surface — `gaussian`,
+`binomial`, `poisson`, `cox`, `multinomial`, `mgaussian` — plus
+arbitrary `stats::family` objects such as `stats::Gamma(link = "log")`
+and `MASS::negative.binomial(theta = ...)` (fixed dispersion). Native
+Cox is invoked by passing a `Surv(time, event)` response with
+`family = "cox"`; the vignette also walks through the piecewise
+exponential Poisson formulation as an alternative.
+
+The prediction path deserves brief comment because it is the point at
+which most `glmnet` callers get injured. Given a fitted
+`regularized_glm` object and a `newdata` data frame, `predict()`
+reconstructs the design matrix by calling `model.matrix` against the
+**stored** `terms` and `xlevels` — not against the levels present in
+`newdata`. If `newdata` contains a factor level that was not seen at
+fit time, `predict()` raises a clear error by default; passing
+`on_new_levels = "na"` returns `NA` predictions for the affected rows
+instead, which is the appropriate behavior in production scoring
+pipelines where scoring must not halt on a single unseen level.
+
+# Illustrative examples
+
+We illustrate the safety guarantees with a compact end-to-end binomial
+example. Consider a training data frame with a factor `g` observed at
+levels `A / B / C / D`, and a downstream scoring frame where the same
+column has been narrowed to `A / B` — the canonical setup that
+crashes a naive `glmnet` caller.
+
+```{r usecase, eval = FALSE}
+library("fbrglm")
+
+set.seed(1)
+n <- 500
+train <- data.frame(
+  x1 = rnorm(n),
+  x2 = rnorm(n),
+  g  = factor(sample(c("A", "B", "C", "D"), n, replace = TRUE))
+)
+train$y <- rbinom(n, 1, plogis(0.3 * train$x1 - 0.2 * train$x2))
+
+fit <- fbrglm(
+  y ~ x1 + x2 + g,
+  data   = train,
+  family = binomial(),
+  lambda = 0.05
+)
+
+## Deployment-time scoring data: only levels A and B remain.
+test <- data.frame(
+  x1 = rnorm(20),
+  x2 = rnorm(20),
+  g  = factor(sample(c("A", "B"), 20, replace = TRUE),
+              levels = c("A", "B"))
+)
+
+## Strict default: raise a clear error if new levels appear.
+predict(fit, newdata = test, type = "response")
+
+## Production-scoring opt-in: NA out unseen levels.
+predict(fit, newdata = test, type = "response",
+        on_new_levels = "na")
+```
+
+Under raw `glmnet`, the second call fails with
+`"The number of variables in newx must be N"` because
+`model.matrix(~ ., test)` yields fewer columns than
+`model.matrix(~ ., train)`. Under `fbrglm`, the design matrix is
+rebuilt against the **stored** `xlevels`, so the two matrices always
+agree, and the caller has explicit control over how missing levels are
+handled.
+
+The `summary()` output for the same fit prints coefficients with the
+inference-policy notice in place of SE / z / p / CI, which conveys the
+regularization contract at the point of use rather than leaving the
+caller to remember it:
+
+```{r summary-illustration, eval = FALSE}
+summary(fit)
+#>
+#> Call:
+#>   fbrglm(y ~ x1 + x2 + g, data = train,
+#>          family = binomial(), lambda = 0.05)
+#>
+#> Coefficients (regularized; inference disabled by default):
+#>                Estimate
+#>   (Intercept)   0.02351
+#>   x1            0.19812
+#>   x2           -0.14039
+#>   gB           -0.05127
+#>   gC           NA          # dropped: not identifiable in design
+#>   gD            0.08644
+#>
+#> lambda = 0.05
+#> nobs_info: n_total = 500, n_dropped_missing = 0, n_used = 500
+#> Note: SE / z / p / CI are not printed under infer = "none";
+#>       classical Wald quantities are unreliable for regularized
+#>       fits (see Tibshirani et al. 2016).
+```
+
+Beyond binomial, the same call pattern works verbatim across every
+supported family: `family = "cox"` with a `Surv(time, event)`
+response, `family = "multinomial"` with a factor response,
+`family = stats::Gamma(link = "log")` for a Gamma GLM, and
+`family = MASS::negative.binomial(theta)` for fixed-dispersion
+negative binomial. The vignette shipped with the package
+(`vignette("fbrglm-families")`) walks each family end-to-end.
+
+# Impact
+
+`fbrglm` is directly applicable to any project that uses `glmnet` for
+regularized GLMs — from small ad-hoc analyses to production scoring
+pipelines. The behavioral changes relative to a hand-built
+`glmnet` call are:
+
+- **Predict-time robustness.** Factor-level mismatch between training
+  and scoring data becomes an explicit, checked error (or a controlled
+  `NA` under an opt-in), rather than a low-level `glmnet` crash.
+- **Interpretability of "zero".** Rank-deficient columns now show as
+  `NA` coefficients (`glm()` convention), so a numeric zero in the
+  coefficient table unambiguously means "shrunk by the penalty".
+- **Inference contract.** The regularization contract is surfaced in
+  every `summary()` call, discouraging accidental use of unreliable
+  classical Wald statistics for penalized fits.
+- **Interoperability.** `broom` methods (`tidy`, `glance`) are
+  provided directly; `as_glmnet()` and `as_cv_glmnet()` return the
+  underlying objects unchanged, so downstream tooling that expects a
+  raw `glmnet` handle still works.
+
+A companion reproducibility study [@fbrglm-experiments] verifies that
+`fbrglm` produces bit-identical predictions to a hand-built
+raw-`glmnet` call across all eight supported families, matches
+`cv.glmnet` under fixed `foldid` for `lambda = "cv_min"` and
+`"cv_1se"`, and, in a small binomial runtime grid, sits within
+roughly 2–3× the raw-`glmnet` cost — comparable to `glmnetUtils`
+[@glmnetUtils] and consistently lighter than the `parsnip`
+[@parsnip] / `workflows` [@workflows] pipeline in the tested setting.
+These numbers are illustrative rather than a general performance
+claim, but they establish that the safety layer is not a numerical
+compromise. The release used in this study is archived at
+[@fbrglm].
+
+# Conclusions
+
+`fbrglm` narrows the gap between `stats::glm()`'s strict
+modeling-workflow contract and the numerical machinery of `glmnet`.
+By freezing the training-time model recipe on the fit object,
+restoring `glm()`'s rank-deficient NA convention, and printing an
+explicit inference policy, the package removes a well-known class of
+correctness and reproducibility failures that raw `glmnet` invites
+but does not itself catch. The underlying estimator is unchanged;
+what the user gets is the safety guarantees, error semantics, and
+`glm()`-shaped API that make regularized GLMs safe to hand to a
+production scoring pipeline.
+
+# References {-}

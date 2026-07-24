@@ -30,13 +30,7 @@ environment.yml
 # Rendered manuscript outputs (regenerated from paper/*.Rmd)
 paper/*.html
 paper/*.pdf
+paper/*.tex
+paper/*.spl
 paper/*_files/
 paper/*_cache/
-
-# JSS render intermediates and template assets temporarily copied by
-# scripts/render_jss_pdf.R
-paper/*.tex
-paper/jss.cls
-paper/jss.bst
-paper/jsslogo.jpg
-paper/.fbrglm-jss-draft-jss.tmp.Rmd
