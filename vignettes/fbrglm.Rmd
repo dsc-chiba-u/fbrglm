@@ -21,7 +21,7 @@ set.seed(20260101)
 
 `fbrglm` is a formula-based front-end for regularized generalized linear
 models. Internally it delegates the fit to
-[`glmnet`](https://cran.r-project.org/package=glmnet); the wrapper's job
+[`glmnet`](https://CRAN.R-project.org/package=glmnet); the wrapper's job
 is to make the user-facing experience look like base R's `glm()` — a
 `formula` + `data.frame`, automatic factor handling, complete-case
 filtering, and the familiar S3 methods (`print`, `summary`, `coef`,
