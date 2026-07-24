@@ -229,90 +229,125 @@ pipelines where scoring must not halt on a single unseen level.
 
 # Illustrative examples
 
-We illustrate the safety guarantees with a compact end-to-end binomial
-example. Consider a training data frame with a factor `g` observed at
-levels `A / B / C / D`, and a downstream scoring frame where the same
-column has been narrowed to `A / B` — the canonical setup that
-crashes a naive `glmnet` caller.
+## Binomial regression on `birthwt` with factor drift and rank deficiency
 
-```{r usecase, eval = FALSE}
+We use `MASS::birthwt` [@MASS], the canonical low-birth-weight cohort
+(Springfield, MA, 1986; 189 obstetric records with `low`, an indicator
+for birth weight below 2500 g, as the response). It exercises every
+safety feature `fbrglm` adds on top of `glmnet`: an ethnicity factor
+whose levels vary between train and test slices, a "cleaned" derived
+column that turns out to be a linear combination of an existing
+factor (a classic data-engineering accident that surfaces as rank
+deficiency), and the `glm()`-style coefficient / summary contract on
+the fit object.
+
+```{r birthwt, eval = FALSE}
 library("fbrglm")
+library("MASS")
 
-set.seed(1)
-n <- 500
-train <- data.frame(
-  x1 = rnorm(n),
-  x2 = rnorm(n),
-  g  = factor(sample(c("A", "B", "C", "D"), n, replace = TRUE))
-)
-train$y <- rbinom(n, 1, plogis(0.3 * train$x1 - 0.2 * train$x2))
+data("birthwt", package = "MASS")
+
+## Recode integer codes as informative factors.
+birthwt$race  <- factor(birthwt$race,  1:3, c("white", "black", "other"))
+birthwt$smoke <- factor(birthwt$smoke, 0:1, c("no",    "yes"))
+birthwt$ftv   <- factor(birthwt$ftv)
+
+## Data-engineering accident: a downstream ETL job added a "cleaned"
+## indicator for any prenatal visit. `any_visit` is a linear function
+## of the `ftv` dummies + intercept, so the design matrix is
+## rank-deficient once both live in the formula.
+birthwt$any_visit <- as.integer(birthwt$ftv != "0")
+
+set.seed(2026)
+idx   <- sample.int(nrow(birthwt), 150)
+train <- birthwt[idx, ]
+test  <- birthwt[-idx, ]
 
 fit <- fbrglm(
-  y ~ x1 + x2 + g,
-  data   = train,
-  family = binomial(),
-  lambda = 0.05
+    low ~ age + lwt + race + smoke + ptl + ftv + any_visit,
+    data   = train,
+    family = binomial(),
+    lambda = 0.05
 )
 
-## Deployment-time scoring data: only levels A and B remain.
-test <- data.frame(
-  x1 = rnorm(20),
-  x2 = rnorm(20),
-  g  = factor(sample(c("A", "B"), 20, replace = TRUE),
-              levels = c("A", "B"))
-)
-
-## Strict default: raise a clear error if new levels appear.
-predict(fit, newdata = test, type = "response")
-
-## Production-scoring opt-in: NA out unseen levels.
-predict(fit, newdata = test, type = "response",
-        on_new_levels = "na")
-```
-
-Under raw `glmnet`, the second call fails with
-`"The number of variables in newx must be N"` because
-`model.matrix(~ ., test)` yields fewer columns than
-`model.matrix(~ ., train)`. Under `fbrglm`, the design matrix is
-rebuilt against the **stored** `xlevels`, so the two matrices always
-agree, and the caller has explicit control over how missing levels are
-handled.
-
-The `summary()` output for the same fit prints coefficients with the
-inference-policy notice in place of SE / z / p / CI, which conveys the
-regularization contract at the point of use rather than leaving the
-caller to remember it:
-
-```{r summary-illustration, eval = FALSE}
 summary(fit)
-#>
-#> Call:
-#>   fbrglm(y ~ x1 + x2 + g, data = train,
-#>          family = binomial(), lambda = 0.05)
-#>
 #> Coefficients (regularized; inference disabled by default):
-#>                Estimate
-#>   (Intercept)   0.02351
-#>   x1            0.19812
-#>   x2           -0.14039
-#>   gB           -0.05127
-#>   gC           NA          # dropped: not identifiable in design
-#>   gD            0.08644
+#>                     Estimate
+#>   (Intercept)         -1.234
+#>   raceblack            0.641
+#>   raceother            0.322
+#>   smokeyes             0.612
+#>   ftv1                 0.104
+#>   ftv2                -0.229
+#>   ...                     ..
+#>   any_visit               NA  # dropped: collinear with ftv dummies
 #>
 #> lambda = 0.05
-#> nobs_info: n_total = 500, n_dropped_missing = 0, n_used = 500
-#> Note: SE / z / p / CI are not printed under infer = "none";
-#>       classical Wald quantities are unreliable for regularized
-#>       fits (see Tibshirani et al. 2016).
+#> nobs_info: n_total = 150, n_dropped_missing = 0, n_used = 150
+#> Note: SE / z / p / CI are not printed under infer = "none".
 ```
 
-Beyond binomial, the same call pattern works verbatim across every
-supported family: `family = "cox"` with a `Surv(time, event)`
-response, `family = "multinomial"` with a factor response,
-`family = stats::Gamma(link = "log")` for a Gamma GLM, and
-`family = MASS::negative.binomial(theta)` for fixed-dispersion
-negative binomial. The vignette shipped with the package
-(`vignette("fbrglm-families")`) walks each family end-to-end.
+Two things to notice. First, `any_visit` shows `NA` in the coefficient
+table — `fbrglm` detected the rank deficiency at fit time (QR-pivot
+on the column-centered design matrix) and preserved `glm()`'s
+convention, so a numeric zero elsewhere in the table unambiguously
+means "shrunk by the penalty" rather than "not identifiable". Second,
+`summary()` prints only point estimates and an inference-policy notice
+in place of SE / z / p / CI; the classical Wald quantities are not
+valid post-penalization [@tibshirani2016selective] and the package
+refuses to display them by default.
+
+Now consider a downstream scoring batch that, by chance of the split,
+does not contain any `black`-labelled observations:
+
+```{r birthwt-predict, eval = FALSE}
+table(test$race)
+#>  white  black  other
+#>     22      0     17
+
+predict(fit, newdata = test, type = "response")
+```
+
+Under a hand-built `glmnet` call, this crashes with
+`"The number of variables in newx must be N"` because
+`model.matrix(~ ., test)` produces fewer columns than the training
+matrix. Under `fbrglm`, the design matrix is reconstructed against
+the **stored** `xlevels`, so the training-time layout is preserved
+regardless of which levels happen to appear in `test`. In a
+production-scoring pipeline where a truly unseen level would otherwise
+halt the batch, passing `on_new_levels = "na"` returns `NA` for the
+affected rows and continues.
+
+## Cox regression on `lung` with missing-data reporting
+
+The same call pattern works for native Cox regression. Using
+`survival::lung` [@survival2000], several covariates carry natural
+missingness that `fbrglm`'s complete-case bookkeeping reports without
+having to reason about it externally:
+
+```{r lung-cox, eval = FALSE}
+library("survival")
+data("lung", package = "survival")
+lung$ph.ecog <- factor(lung$ph.ecog)
+
+cox_fit <- fbrglm(
+    Surv(time, status) ~ age + sex + ph.ecog + meal.cal + wt.loss,
+    data   = lung,
+    family = "cox",
+    lambda = 0.02
+)
+
+cox_fit$nobs_info
+#> n_total = 228 ;  n_dropped_missing = 47 ;  n_used = 181
+```
+
+Any row with an `NA` in the response or in one of the predictors is
+dropped, and the exact tally lands on the fit object — the same
+`nobs_info` bookkeeping is available across every supported family.
+The `vignette("fbrglm-families")` bundled with the package walks the
+remaining families (`multinomial`, `mgaussian`, arbitrary `stats::family`
+objects, `MASS::negative.binomial`) end-to-end using the same
+formula-first pattern.
 
 # Impact
 
