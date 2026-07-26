@@ -465,4 +465,15 @@ what the user gets is the safety guarantees, error semantics, and
 `glm()`-shaped API that make regularized GLMs safe to hand to a
 production scoring pipeline.
 
+# Declaration of generative AI and AI-assisted technologies in the manuscript preparation process {-}
+
+During the preparation of this work, the authors used Anthropic's
+Claude Code (Claude Opus) for drafting and revising manuscript
+prose, converting the manuscript structure to the SoftwareX Article
+Template, and copyediting. All scientific claims, code, and
+empirical results were designed, executed, and verified by the
+authors. The authors reviewed and edited the AI-generated output as
+needed and take full responsibility for the content of the published
+article.
+
 # References {-}
