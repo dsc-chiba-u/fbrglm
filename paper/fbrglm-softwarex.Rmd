@@ -243,6 +243,24 @@ factor (a classic data-engineering accident that surfaces as rank
 deficiency), and the `glm()`-style coefficient / summary contract on
 the fit object.
 
+```{r birthwt-setup, include = FALSE}
+## Silently run the same setup shown below so `fit` / `train` / `test`
+## exist for the diagnostic-plot chunk.
+suppressPackageStartupMessages({library(fbrglm); library(MASS)})
+data("birthwt", package = "MASS")
+birthwt$race  <- factor(birthwt$race,  1:3, c("white","black","other"))
+birthwt$smoke <- factor(birthwt$smoke, 0:1, c("no","yes"))
+birthwt$ftv   <- factor(birthwt$ftv)
+birthwt$any_visit <- as.integer(birthwt$ftv != "0")
+set.seed(93); idx <- sample.int(nrow(birthwt), 150)
+train <- birthwt[idx, ]; test <- birthwt[-idx, ]
+suppressMessages({
+  fit <- fbrglm(low ~ age + lwt + race + smoke + ptl + ftv + any_visit,
+                data = train, family = "binomial",
+                lambda = "fix", lambda_value = 0.05)
+})
+```
+
 ```{r birthwt, eval = FALSE}
 library("fbrglm")
 library("MASS")
@@ -303,27 +321,28 @@ in place of SE / z / p / CI; the classical Wald quantities are not
 valid post-penalization [@tibshirani2016selective] and the package
 refuses to display them by default.
 
-Now consider a downstream scoring batch that, by chance of the split,
-does not contain any `black`-labelled observations:
+The same `glm()`-shaped API extends to visual diagnostics. Calling
+`plot(fit)` returns the three-panel deviance-residual view familiar
+from `stats::glm` (Figure 1); raw `glmnet` does not expose
+residuals in the `glm()` sense, so this view is a genuine `fbrglm`
+add-on rather than a pass-through.
 
-```{r birthwt-predict, eval = FALSE}
-table(test$race)
-#>  white  black  other
-#>     19      0     20
-
-head(predict(fit, newdata = test, type = "response"), 4)
-#> [1] 0.305 0.349 0.426 0.426
+```{r birthwt-diag, echo = TRUE, fig.width = 7.2, fig.height = 1.7, out.width = "100%", fig.pos = "!h", fig.cap = "Standard \\texttt{glm}-style diagnostic panel produced by \\texttt{plot(fit)} on the \\texttt{birthwt} fit. Deviance residuals are computed from the family's \\texttt{dev.resids} at the selected \\texttt{lambda}; the two-arc shape is the binomial GLM signature."}
+op <- graphics::par(mfrow = c(1, 3), mar = c(3.5, 3.5, 2, 0.5), mgp = c(2, 0.7, 0))
+plot(fit)
+graphics::par(op)
 ```
 
-Under a hand-built `glmnet` call, this crashes with
-`"The number of variables in newx must be N"` because
-`model.matrix(~ ., test)` produces fewer columns than the training
-matrix. Under `fbrglm`, the design matrix is reconstructed against
-the **stored** `xlevels`, so the training-time layout is preserved
-regardless of which levels happen to appear in `test`. In a
-production-scoring pipeline where a truly unseen level would otherwise
-halt the batch, passing `on_new_levels = "na"` returns `NA` for the
-affected rows and continues.
+The split also stresses the predict path: the 39-row test batch
+happens to contain 19 `white`, 0 `black`, and 20 `other` observations,
+so `model.matrix(~ ., test)` would build a design matrix with fewer
+columns than `model.matrix(~ ., train)` — the exact conditions under
+which a hand-built `glmnet` call raises "number of variables in newx
+must be N". `predict(fit, newdata = test)` succeeds, because the
+design matrix is reconstructed against the **stored** `xlevels`
+rather than the levels present in `test`; a truly unseen level would
+raise a checked error by default, or return `NA` under
+`on_new_levels = "na"`.
 
 ## Cox regression on `lung` with missing-data reporting
 
