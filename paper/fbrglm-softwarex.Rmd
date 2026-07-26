@@ -60,6 +60,7 @@ preamble: |
   \usepackage{booktabs}
   \usepackage{longtable}
   \usepackage{array}
+  \usepackage{float}
   \providecommand{\pkg}[1]{\texttt{#1}}
   \providecommand{\proglang}[1]{\textsf{#1}}
   \providecommand{\code}[1]{\texttt{#1}}
@@ -105,6 +106,7 @@ knitr::kable(metadata_df, format = "latex", booktabs = TRUE,
              col.names = c("Nr", "Code metadata description", "Metadata"),
              caption = "Code metadata (mandatory per SoftwareX template).",
              linesep = "") |>
+  kableExtra::kable_styling(latex_options = "HOLD_position") |>
   kableExtra::column_spec(1, width = "0.6cm") |>
   kableExtra::column_spec(2, width = "5.5cm") |>
   kableExtra::column_spec(3, width = "7cm")
@@ -181,7 +183,7 @@ single `regularized_glm` object.
 
 ## Software functionalities
 
-Table 1 lists the S3 methods that operate on a `regularized_glm`.
+Table 2 lists the S3 methods that operate on a `regularized_glm`.
 Each method has direct `glm()` semantics.
 
 ```{r methods-table, echo = FALSE}
@@ -206,6 +208,7 @@ methods_df <- data.frame(
 knitr::kable(methods_df, format = "latex", booktabs = TRUE,
              caption = "S3 methods defined on the regularized\\_glm class.",
              linesep = "") |>
+  kableExtra::kable_styling(latex_options = "HOLD_position") |>
   kableExtra::column_spec(1, width = "2.5cm") |>
   kableExtra::column_spec(2, width = "10cm")
 ```
