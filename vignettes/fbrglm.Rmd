@@ -27,11 +27,23 @@ is to make the user-facing experience look like base R's `glm()` — a
 filtering, and the familiar S3 methods (`print`, `summary`, `coef`,
 `predict`, `nobs`, `plot`).
 
-The MVP described here is `infer = "none"`: it returns regularized point
-estimates and **does not** report classical standard errors, z values,
-p values, or confidence intervals. Honest post-selection inference (via
-data splitting or selective inference) is on the roadmap; see the
-package `TODO.md`.
+The current release runs under `infer = "none"`: it returns regularized
+point estimates and **does not** report classical standard errors,
+z values, p values, or confidence intervals — these are not valid
+classical quantities for a penalized fit, so fbrglm suppresses them
+by default. Honest post-selection inference (via data splitting or
+selective inference) is on the roadmap; see the package `TODO.md`.
+
+For two longer end-to-end walkthroughs, see the sibling vignettes:
+
+- `vignette("fbrglm-real-data")` — a real-data pipeline on
+  `MASS::birthwt` from read → split → fit → predict → evaluate →
+  visualize → reuse.
+- `vignette("fbrglm-migration")` — the same logistic model written
+  three ways (`stats::glm`, raw `glmnet`, and `fbrglm`), with a
+  side-by-side comparison table.
+- `vignette("fbrglm-families")` — the full family catalog with a
+  worked example per family.
 
 ```{r setup}
 library(fbrglm)
@@ -193,20 +205,31 @@ as_cv_glmnet(fit_fix)        # NULL — no CV was run
 slot when the wrapper used CV). `as_cv_glmnet()` returns the `cv.glmnet`
 object, or `NULL` for the `"fix"` λ path.
 
-## Limitations (intentional)
+## Scope of the current release
 
-The MVP is deliberately narrow:
+**Supported (core)** — `gaussian`, `binomial`, `poisson`, arbitrary
+`stats::family` objects (including `stats::Gamma`), and fixed-theta
+negative binomial via `MASS::negative.binomial(theta = ...)`.
 
-- only `infer = "none"` is implemented; `"split"` and `"selective"`
-  are planned but not in this release.
-- families: `gaussian`, `binomial`, `poisson` only. `multinomial` and
-  `cox` will land later.
-- the `x` / `y` direct-matrix entry point is reserved but not yet
-  supported — supply `formula` + `data` instead.
-- classical `glm()`-style standard errors, z / p values, and confidence
-  intervals are intentionally **not** shown for `infer = "none"`. Doing
-  so naively for regularized estimators would be misleading; honest
-  inference is the next milestone.
+**Supported (experimental)** — native Cox (`family = "cox"` with a
+`survival::Surv()` response), `multinomial`, and `mgaussian`. These
+paths are exercised by the tests but not yet validated across the
+full range of specialised uses (Cox strata / tie handling,
+multinomial grouped / ungrouped, etc.); the family-catalog vignette
+(`vignette("fbrglm-families")`) shows the working shape of each.
+
+**Not implemented / out of scope**
+
+- `infer = "split"` and `infer = "selective"` — planned; only
+  `infer = "none"` is implemented in this release.
+- Classical `glm()`-style standard errors, z / p values, and
+  confidence intervals — intentionally suppressed under
+  `infer = "none"` (regularized point estimates do not have a valid
+  classical Wald sampling distribution).
+- Joint theta estimation in the spirit of `MASS::glm.nb()` — pass a
+  fixed theta to `MASS::negative.binomial()` directly.
+- The `x` / `y` direct-matrix entry point is reserved but not yet
+  wired; supply `formula` + `data` instead.
 
 Reproducible benchmarks against raw `glmnet`, `glmnetUtils`, and a
 `parsnip` / `workflows` pipeline with the `glmnet` engine live in a

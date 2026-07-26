@@ -1,0 +1,336 @@
+---
+title: "An end-to-end real-data analysis with fbrglm"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{An end-to-end real-data analysis with fbrglm}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+    collapse = TRUE,
+    comment  = "#>",
+    fig.width  = 6,
+    fig.height = 4
+)
+set.seed(93)
+```
+
+## 1. Overview
+
+The other vignettes describe fbrglm's API surface (Getting started)
+and walk each supported family on synthetic data (Families and model
+types). This vignette does one thing end-to-end on a real dataset:
+
+- read a real, small, publicly-available dataset;
+- split it into training and test sets;
+- fit a regularized logistic model with `fbrglm()`;
+- predict on the test set and evaluate;
+- inspect and reuse the fit.
+
+fbrglm does **not** replace `glmnet`'s optimizer — the numerical fit
+is still `glmnet::glmnet()` / `glmnet::cv.glmnet()`. What fbrglm adds
+is a `glm()`-shaped formula/data interface that stores the
+training-time model recipe (`terms`, `xlevels`, `contrasts`) on the
+fit object, restores `glm()`'s rank-deficient NA convention, and
+attaches complete-case bookkeeping (`nobs_info`) to the returned
+model. Those additions are what a working analyst notices in an
+end-to-end pipeline; the numeric coefficients are the same as raw
+`glmnet` given the same data and the same lambda.
+
+## 2. Data
+
+We use `MASS::birthwt`, a classic obstetric cohort collected at Baystate
+Medical Center, Springfield, MA in 1986. Each row is one mother; the
+response `low` indicates a low-birth-weight birth (< 2500 g). The
+dataset ships with the `MASS` package, so no download is needed.
+
+```{r data}
+library("fbrglm")
+library("MASS")
+
+data("birthwt", package = "MASS")
+
+dim(birthwt)
+head(birthwt, 3)
+```
+
+The integer columns for race, smoking status, and first-trimester
+visits are more readable as factors, so we convert them up front. We
+also add a derived indicator `any_visit`. This one is deliberate: it
+is a linear function of the `ftv` dummies and the intercept, and
+would trip up a raw `glmnet` pipeline that silently accepts collinear
+columns. It appears often in real ETL — a downstream "cleaner"
+column bundled alongside the raw feature.
+
+```{r prep}
+birthwt$race  <- factor(birthwt$race,  1:3, c("white", "black", "other"))
+birthwt$smoke <- factor(birthwt$smoke, 0:1, c("no", "yes"))
+birthwt$ftv   <- factor(birthwt$ftv)
+birthwt$any_visit <- as.integer(birthwt$ftv != "0")
+
+table(low = birthwt$low)                 # outcome distribution
+sapply(birthwt, function(v) sum(is.na(v)))  # no missing values here
+```
+
+## 3. Train / test split
+
+A 150 / 39 split with a pinned seed. The split is not stratified on
+`race`; that's on purpose — it lets the test batch happen to miss one
+of the three race levels, which is exactly the kind of drift a real
+scoring pipeline sees.
+
+```{r split}
+set.seed(93)
+idx   <- sample.int(nrow(birthwt), 150)
+train <- birthwt[idx, ]
+test  <- birthwt[-idx, ]
+
+c(train_n = nrow(train), test_n = nrow(test))
+table(train$low)
+table(test$low)
+
+## The test batch, by chance, contains no rows at race == "black".
+## This is the kind of factor drift that crashes a naive glmnet caller.
+table(test$race)
+```
+
+Nothing about the fit needs to be done differently to defend against
+this drift — fbrglm freezes the fit-time `xlevels` on the fit object
+and reuses them at predict time.
+
+## 4. Preprocessing
+
+fbrglm takes a `formula` + `data.frame` and builds the numeric design
+matrix internally. That means the preprocessing you actually have to
+write is limited to what you want on the *data frame* (factor
+recoding, column selection, complete-case filtering if desired),
+rather than everything that turns a data frame into a numeric matrix.
+
+```{r preprocess}
+predictors <- c("age", "lwt", "race", "smoke", "ptl", "ftv", "any_visit")
+str(train[, c("low", predictors)])
+```
+
+No further transformation is needed. Concretely, we are *not* calling
+`model.matrix()` at any point in this script; that step happens
+inside `fbrglm()` at fit time and again at predict time (against the
+frozen `xlevels`), so the two design matrices are guaranteed to
+agree.
+
+## 5. Fit with `fbrglm`
+
+We select lambda by cross-validation (`lambda = "cv_min"`) with 5
+folds to keep the vignette runtime short. In an applied setting you
+would typically use the default 10 folds.
+
+```{r fit}
+fit <- fbrglm(
+    low ~ age + lwt + race + smoke + ptl + ftv + any_visit,
+    data   = train,
+    family = "binomial",
+    lambda = "cv_min",
+    nfolds = 5
+)
+```
+
+`print()` shows the call, family, chosen lambda, and the
+complete-case bookkeeping in one glance:
+
+```{r print}
+print(fit)
+```
+
+`summary()` prints the same header plus the (regularized) coefficient
+vector. `any_visit` is reported as `NA`: fbrglm caught the linear
+dependence at fit time (QR-pivot on the column-centered design
+matrix) and preserved `stats::glm()`'s convention. A numeric zero
+elsewhere in the coefficient table therefore unambiguously means
+"shrunk to zero by the penalty" rather than "not identifiable in the
+design".
+
+```{r summary}
+summary(fit)
+```
+
+Note that no standard errors, z-values, p-values, or CIs are printed:
+regularized point estimates do not have a valid classical Wald
+sampling distribution, so fbrglm suppresses them by default under
+`infer = "none"`.
+
+Two accessors expose the state a downstream analyst usually wants:
+
+```{r nobs-rank}
+nobs(fit)
+fit$nobs_info
+fit$rank_info[c("rank", "ncol", "rank_deficient", "dropped_cols")]
+```
+
+`tidy()` returns the same information as a tibble for downstream
+data-wrangling:
+
+```{r tidy}
+tidy(fit)
+```
+
+## 6. Prediction
+
+The test batch we set aside contains only two of the three training
+race levels (`table(test$race)` from Section 3). We predict on it
+directly — no manual `model.matrix()` alignment is needed.
+
+```{r predict}
+p_test <- predict(fit, newdata = test, type = "response")
+summary(p_test)
+head(cbind(p_test, low = test$low), 5)
+```
+
+Under a hand-built `glmnet` call, the same input would raise
+`"The number of variables in newx must be N"` because
+`model.matrix(~ ., test)` would produce fewer columns than the
+training matrix. fbrglm reconstructs the design matrix against the
+stored `xlevels`, so the training-time layout is preserved
+regardless of which levels happen to appear at scoring time.
+
+If a scoring batch contains a truly *unseen* factor level (rather
+than a subset of the training levels, as here), the default behavior
+is to raise a checked error. Production scoring pipelines that must
+not halt on a single unseen row can opt into
+`predict(fit, newdata, on_new_levels = "na")`, which returns `NA` for
+the affected rows and continues.
+
+## 7. Evaluation
+
+We report three metrics — accuracy at the 0.5 threshold, log-loss,
+and ROC AUC — all computed in base R to keep the vignette dependency
+footprint minimal.
+
+```{r evaluate}
+y_test <- test$low
+p_vec  <- as.numeric(p_test)
+
+## Accuracy at threshold 0.5
+acc <- mean((p_vec > 0.5) == (y_test == 1))
+
+## Log-loss
+log_loss <- -mean(y_test * log(pmax(p_vec, 1e-12)) +
+                  (1 - y_test) * log(pmax(1 - p_vec, 1e-12)))
+
+## ROC AUC via the trapezoidal rule
+auc <- {
+    ord  <- order(p_vec, decreasing = TRUE)
+    y_o  <- y_test[ord]
+    tp   <- cumsum(y_o == 1) / max(1, sum(y_test == 1))
+    fp   <- cumsum(y_o == 0) / max(1, sum(y_test == 0))
+    sum(diff(c(0, fp)) * (c(0, tp[-length(tp)]) + tp) / 2)
+}
+
+round(c(accuracy = acc, log_loss = log_loss, auc = auc), 3)
+```
+
+These numbers are modest; birthwt is a small cohort with weak
+signals and the point of the vignette is the workflow, not the fit
+quality. In an applied study you would compare several models on
+these same metrics; the pattern of `fbrglm()` calls stays identical.
+
+## 8. Visualization
+
+Two quick views. First, the distribution of predicted probabilities
+on the test set, split by the observed outcome — a sanity check that
+the model is separating the two classes at all:
+
+```{r viz-pred, fig.width = 6, fig.height = 3}
+op <- par(mfrow = c(1, 2), mar = c(4, 4, 2, 1))
+hist(p_vec[y_test == 0], breaks = seq(0, 1, by = 0.05),
+     main = "low = 0 (normal weight)", xlab = "Predicted probability",
+     col = "grey85", border = "white")
+hist(p_vec[y_test == 1], breaks = seq(0, 1, by = 0.05),
+     main = "low = 1 (low birth weight)", xlab = "Predicted probability",
+     col = "grey60", border = "white")
+par(op)
+```
+
+Second, the standard `glm`-style diagnostic panel produced by
+`plot(fit)`. `fbrglm`'s deviance residuals are computed against the
+family's `dev.resids`, so the two-arc pattern typical of a binomial
+GLM is visible. Raw `glmnet` does not expose residuals in the
+`glm()` sense, so this view is a genuine `fbrglm` add-on rather than
+a pass-through.
+
+```{r viz-diag, fig.width = 6.5, fig.height = 2.2}
+op <- par(mfrow = c(1, 3), mar = c(3.5, 3.5, 2, 0.5), mgp = c(2, 0.7, 0))
+plot(fit)
+par(op)
+```
+
+## 9. Inspecting and reusing the fit
+
+`as_glmnet()` and `as_cv_glmnet()` return the underlying objects
+unchanged, so any function that consumes a raw `glmnet` handle keeps
+working:
+
+```{r accessors}
+class(as_glmnet(fit))
+class(as_cv_glmnet(fit))
+```
+
+The fit object survives `saveRDS()` / `readRDS()` without losing the
+training-time model recipe, which is what makes hand-off between an
+exploration session and a scoring service safe:
+
+```{r roundtrip}
+tmp <- tempfile(fileext = ".rds")
+saveRDS(fit, tmp)
+fit_reloaded <- readRDS(tmp)
+p_reloaded   <- predict(fit_reloaded, newdata = test, type = "response")
+
+## Predictions on newdata are identical after round-trip.
+isTRUE(all.equal(as.numeric(p_test), as.numeric(p_reloaded)))
+unlink(tmp)
+```
+
+The frozen `terms` / `xlevels` / `contrasts` on the fit object are
+what makes this round-trip safe: `predict()` on `fit_reloaded` never
+consults the current session's `options("contrasts")` or the levels
+present in `test`, and so cannot drift from the training-time
+encoding.
+
+## 10. What `fbrglm` saved us from
+
+A hand-rolled equivalent of the pipeline above would have to do,
+outside the model:
+
+- run `model.matrix(~ ., train)` and strip the intercept, in exactly
+  the shape `glmnet::glmnet()` expects;
+- do the same at predict time, against a `newdata` whose factor
+  levels may have narrowed — and remember to pad the missing dummy
+  columns with zeros before calling `predict()`;
+- keep training-time `xlevels` and `contrasts` in a separate side
+  variable, otherwise a different R session with a different
+  `options("contrasts")` will silently change the design matrix's
+  meaning;
+- run a rank check on the design matrix to catch the accidental
+  linear dependency (`any_visit` in this example) — otherwise the
+  glmnet coefficient for the dependent column comes back as a
+  numeric `0`, visually indistinguishable from a penalty result;
+- track how many rows were dropped by complete-case filtering and
+  attach that count to the model somewhere the future analyst can
+  find.
+
+None of these steps involve any statistical decision. Moving them
+into the package leaves the analysis script to say
+`formula + data + family` and read back a fit object that behaves
+like `stats::glm()` for every downstream question.
+
+## 11. Reproducibility
+
+- Data: `MASS::birthwt`, shipped with the `MASS` package. No
+  external download.
+- Seed: `set.seed(93)` at the top of Section 3 pins the train / test
+  split.
+- Software used to build this vignette:
+
+```{r sessioninfo}
+sessionInfo()
+```

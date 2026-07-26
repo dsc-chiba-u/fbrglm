@@ -262,13 +262,17 @@ Full list and rationale: `TODO.md`.
 - *Getting started* (`vignette("fbrglm")`) — formula / data, λ
   selection, `predict(type = ...)`, `nobs_info`, factor narrowing,
   offsets.
-- *Families and model types* (`vignette("fbrglm-families")`) — worked
-  examples for linear, logistic, Poisson (with offset), Gamma,
-  negative binomial (fixed θ), native Cox (`Surv()` LHS), plus the
-  experimental multinomial and mgaussian paths. Two survival routes
-  are shown explicitly: the **piecewise exponential Poisson** model on
-  long-format data and the **native Cox** path via `family = "cox"`;
-  these are different models and the vignette does not conflate them.
+- *Families and model types* (`vignette("fbrglm-families")`) — one
+  worked example per supported family on synthetic data (linear,
+  logistic, Poisson with offset, Gamma, fixed-θ negative binomial,
+  native Cox, plus the experimental multinomial and mgaussian paths).
+- *An end-to-end real-data analysis* (`vignette("fbrglm-real-data")`)
+  — read → split → fit → predict → evaluate → visualize → reuse, on
+  the `MASS::birthwt` cohort, in base R only.
+- *Moving from glm and glmnet to fbrglm* (`vignette("fbrglm-migration")`)
+  — the same logistic model written three ways with a side-by-side
+  comparison table and a safe-prediction demo under narrowed test
+  factor levels.
 
 ## Reproducible experiments
 

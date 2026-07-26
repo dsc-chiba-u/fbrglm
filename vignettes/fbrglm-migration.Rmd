@@ -1,0 +1,239 @@
+---
+title: "Moving from glm and glmnet to fbrglm"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Moving from glm and glmnet to fbrglm}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+    collapse = TRUE,
+    comment  = "#>",
+    fig.width  = 6,
+    fig.height = 4
+)
+set.seed(93)
+```
+
+This vignette shows the same logistic model written three ways —
+with `stats::glm()`, with raw `glmnet::glmnet()`, and with
+`fbrglm::fbrglm()` — so the "diff" of moving from one to another is
+concrete. All three run against the same `MASS::birthwt` cohort used
+in the [real-data
+vignette](fbrglm-real-data.html); the numeric coefficients from raw
+`glmnet` and `fbrglm` at the same fixed lambda are bit-identical, as
+they should be.
+
+```{r setup}
+library("fbrglm")
+library("glmnet")
+library("MASS")
+
+data("birthwt", package = "MASS")
+birthwt$race  <- factor(birthwt$race,  1:3, c("white", "black", "other"))
+birthwt$smoke <- factor(birthwt$smoke, 0:1, c("no",    "yes"))
+```
+
+## 1. The same model in `glm`
+
+`stats::glm()` consumes a formula and a data frame. The design
+matrix, factor encoding, and complete-case handling are done for you;
+there is no regularization.
+
+```{r glm}
+fit_glm <- glm(
+    low ~ age + lwt + race + smoke,
+    data   = birthwt,
+    family = binomial()
+)
+round(coef(fit_glm), 3)
+```
+
+## 2. The same model in raw `glmnet`
+
+`glmnet::glmnet()` consumes a numeric matrix `x` and a response `y`,
+by design. Bringing the formula/data pattern to it means writing
+three extra steps by hand: constructing the design matrix, stripping
+the intercept column (glmnet fits its own), and pulling the response
+vector out of the data frame.
+
+```{r glmnet-raw}
+X <- model.matrix(low ~ age + lwt + race + smoke, birthwt)[, -1,
+                                                            drop = FALSE]
+y <- birthwt$low
+fit_glmnet <- glmnet(X, y, family = "binomial", lambda = 0.02)
+round(as.numeric(coef(fit_glmnet)), 3)
+```
+
+At predict time this pattern repeats: build `newx` from `newdata` in
+exactly the same way (same factor levels, same contrasts, same
+column order) or `predict()` will error out with `"The number of
+variables in newx must be N"`. If lambda is picked by
+cross-validation, `cv.glmnet(X, y, family = "binomial")` returns a
+`cv.glmnet` object whose `lambda.min` and `lambda.1se` slots are the
+usual choices.
+
+## 3. The same model in `fbrglm`
+
+`fbrglm()` restores the `formula` + `data.frame` call shape while
+keeping glmnet's optimizer underneath:
+
+```{r fbrglm}
+fit_fbr <- fbrglm(
+    low ~ age + lwt + race + smoke,
+    data         = birthwt,
+    family       = "binomial",
+    lambda       = "fix",
+    lambda_value = 0.02
+)
+round(coef(fit_fbr), 3)
+```
+
+The coefficients agree with the raw `glmnet` call above:
+
+```{r equivalence}
+max(abs(as.numeric(coef(fit_glmnet)) - coef(fit_fbr)))
+```
+
+For CV-selected lambda, replace the last two arguments with
+`lambda = "cv_min"` (or `"cv_1se"`); the underlying call is
+`cv.glmnet()`, and the resolved numeric lambda lives at
+`fit$lambda_value`.
+
+## 4. Side-by-side comparison
+
+The interface differences are worth laying out explicitly, because
+they drive most of the "which one should I reach for" decision.
+
+| Task                                     | `glm`                                  | Raw `glmnet`                                                | `fbrglm`                                                 |
+|------------------------------------------|----------------------------------------|-------------------------------------------------------------|----------------------------------------------------------|
+| Formula / data interface                 | `glm(formula, data, family)`           | numeric `x`, `y`; formula not accepted                      | `fbrglm(formula, data, family)`                          |
+| Regularization                           | none                                   | L1 / L2 / elastic net                                       | L1 / L2 / elastic net (via `glmnet`)                     |
+| Factor encoding                          | automatic                              | caller builds `model.matrix()` and strips intercept         | automatic                                                |
+| `predict(newdata = ...)`                 | yes                                    | caller must rebuild `newx` with the same encoding           | yes, against stored `xlevels` / `contrasts`              |
+| Lambda stored on fit                     | n/a                                    | on `cv.glmnet` (`lambda.min`, `lambda.1se`)                 | on fit (`fit$lambda_value`, `fit$lambda_rule`)           |
+| Complete-case bookkeeping                | in `fit$na.action` / model frame       | caller tracks it externally                                 | `fit$nobs_info` (n_total / n_dropped / n_used)           |
+| Rank-deficient columns                   | `NA` in `coef()` (glm convention)      | numeric `0` — visually a penalty result                     | `NA` in `coef()` (glm convention)                        |
+| Access to underlying `glmnet` object     | n/a                                    | direct                                                      | `as_glmnet(fit)` / `as_cv_glmnet(fit)`                   |
+
+## 5. Pipe workflow
+
+Because `fbrglm(formula, data, ...)` takes `data` as its second
+argument, a data-first pipe needs one of R's argument-placement
+tools. The three forms below all work; the first is the shortest.
+
+```{r pipe-base}
+## Base R pipe (>= 4.2) with the `_` named-argument placeholder.
+fit_pipe <- birthwt |>
+    subset(bwt > 0) |>
+    fbrglm(low ~ age + lwt + race + smoke,
+           data         = _,
+           family       = "binomial",
+           lambda       = "fix",
+           lambda_value = 0.02)
+class(fit_pipe)
+```
+
+```{r pipe-anon}
+## Anonymous function — works on any R version.
+fit_pipe2 <- birthwt |>
+    subset(bwt > 0) |>
+    (\(d) fbrglm(low ~ age + lwt + race + smoke,
+                 data = d, family = "binomial",
+                 lambda = "fix", lambda_value = 0.02))()
+class(fit_pipe2)
+```
+
+If your project already uses `magrittr`, the `%>%` operator with the
+`.` placeholder works exactly the same way as the base-pipe `_`
+form. `fbrglm` does not depend on `magrittr` and does not add a
+data-first wrapper of its own — the base-pipe placeholder is enough
+for the natural chain.
+
+## 6. Safe prediction under narrowed factor levels
+
+The single most common failure mode when moving from `glm` to raw
+`glmnet` is that predict-time factor levels don't line up with
+training. `fbrglm` inherits `glm`'s behaviour on this: the design
+matrix at predict time is reconstructed against the *stored*
+`xlevels`, not the levels present in `newdata`.
+
+```{r drift-setup}
+set.seed(1)
+train <- data.frame(
+    y  = rbinom(80, 1, 0.5),
+    x1 = rnorm(80),
+    g  = factor(sample(c("A", "B", "C"), 80, replace = TRUE),
+                levels = c("A", "B", "C"))
+)
+
+## The scoring batch happens to contain only two of the three levels.
+test <- data.frame(
+    x1 = rnorm(6),
+    g  = factor(rep(c("A", "B"), length.out = 6),
+                levels = c("A", "B"))
+)
+```
+
+**Raw `glmnet` (naive path)** — build `X_train` from `train`, then
+`X_test` from `test`, and hand `X_test` to `predict.glmnet()`. This
+is the pattern that gets bitten:
+
+```{r drift-glmnet, error = TRUE}
+X_train <- model.matrix(y ~ x1 + g, train)[, -1, drop = FALSE]
+y_train <- train$y
+X_test  <- model.matrix(   ~ x1 + g, test )[, -1, drop = FALSE]
+
+c(train_ncol = ncol(X_train), test_ncol = ncol(X_test))
+
+fit_naive <- glmnet(X_train, y_train, family = "binomial",
+                    lambda = 0.05)
+predict(fit_naive, newx = X_test, type = "response")
+```
+
+`X_test` is one column narrower than `X_train`, and `predict.glmnet()`
+raises the diagnostic error accordingly. Recovering by hand means
+constructing `X_test` against the training-time levels — the same
+thing `fbrglm` does for you.
+
+**`fbrglm` path** — the same input succeeds because `xlevels` are
+frozen on the fit:
+
+```{r drift-fbrglm}
+fit_safe <- fbrglm(y ~ x1 + g, data = train,
+                   family = "binomial",
+                   lambda = "fix", lambda_value = 0.05)
+
+predict(fit_safe, newdata = test, type = "response")
+```
+
+If `newdata` were to contain a *truly new* level (a level absent from
+the training data), `predict.fbrglm()` raises a checked error by
+default; passing `on_new_levels = "na"` returns `NA` for the affected
+rows instead — the appropriate behaviour in a production scoring
+pipeline where a single unseen row should not halt the batch.
+
+## 7. Choosing when to use which interface
+
+- **`stats::glm`** — unregularized fits, classical inference (SE,
+  z-scores, p-values, confidence intervals), small designs where
+  regularization is not needed. Base R, no extra dependencies.
+- **Raw `glmnet` / `cv.glmnet`** — matrix-first workflows,
+  high-control settings where the caller wants to manage the design
+  matrix explicitly (block-diagonal penalties, custom folds passed
+  via `foldid`, sparse `Matrix::Matrix` inputs, non-standard family
+  objects that `fbrglm` has not been tested against).
+- **`fbrglm`** — regularized GLMs called through the `glm()`
+  formula/data pattern, with the safety guarantees (frozen
+  `xlevels`, rank-deficient NA convention, complete-case
+  bookkeeping) that `glm()` provides for its unregularized cousin.
+- **A `tidymodels` stack (`parsnip` + `workflows` + `recipes`)** —
+  full modeling framework covering preprocessing, resampling,
+  tuning, and comparison across many engine types; the right choice
+  when the modeling task is one step in a larger tidymodels pipeline
+  rather than a stand-alone regularized GLM.
+
+These scopes overlap in the middle; the tables above lay out the
+concrete differences.

@@ -111,3 +111,41 @@ error. Production scoring pipelines can opt into
 to \code{NA} (with a warning) instead. Heavier features (split /
 selective inference) are tracked in \code{TODO.md}.
 }
+\examples{
+## Minimal gaussian example at fixed lambda (no CV, deterministic).
+set.seed(1)
+n <- 100
+dat <- data.frame(
+    y  = rnorm(n),
+    x1 = rnorm(n),
+    x2 = rnorm(n)
+)
+fit_lm <- fbrglm(y ~ x1 + x2, data = dat,
+                 family = "gaussian",
+                 lambda = "fix", lambda_value = 0.05)
+coef(fit_lm)
+head(predict(fit_lm, type = "response"))
+nobs(fit_lm)
+
+## Binomial with a factor predictor and a narrowed test batch.
+set.seed(2)
+train <- data.frame(
+    y  = rbinom(80, 1, 0.5),
+    x1 = rnorm(80),
+    g  = factor(sample(c("A", "B", "C"), 80, replace = TRUE),
+                levels = c("A", "B", "C"))
+)
+fit_b <- fbrglm(y ~ x1 + g, data = train,
+                family = "binomial",
+                lambda = "fix", lambda_value = 0.05)
+summary(fit_b)
+
+## The test batch has only two of the three training levels — the
+## design matrix is still rebuilt correctly against stored xlevels.
+test <- data.frame(
+    x1 = rnorm(5),
+    g  = factor(rep(c("A", "B"), length.out = 5),
+                levels = c("A", "B"))
+)
+predict(fit_b, newdata = test, type = "response")
+}
