@@ -468,6 +468,12 @@ what the user gets is the safety guarantees, error semantics, and
 `glm()`-shaped API that make regularized GLMs safe to hand to a
 production scoring pipeline.
 
+# Declaration of competing interest {-}
+
+The authors declare that they have no known competing financial
+interests or personal relationships that could have appeared to
+influence the work reported in this paper.
+
 # Declaration of generative AI and AI-assisted technologies in the manuscript preparation process {-}
 
 During the preparation of this work, the authors used Anthropic's
