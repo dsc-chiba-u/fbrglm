@@ -63,6 +63,7 @@ preamble: |
   \providecommand{\pkg}[1]{\texttt{#1}}
   \providecommand{\proglang}[1]{\textsf{#1}}
   \providecommand{\code}[1]{\texttt{#1}}
+  \emergencystretch=3em
 ---
 
 ```{r setup, include = FALSE}
@@ -100,9 +101,13 @@ metadata_df <- data.frame(
   ),
   stringsAsFactors = FALSE
 )
-knitr::kable(metadata_df,
+knitr::kable(metadata_df, format = "latex", booktabs = TRUE,
              col.names = c("Nr", "Code metadata description", "Metadata"),
-             caption = "Code metadata (mandatory per SoftwareX template).")
+             caption = "Code metadata (mandatory per SoftwareX template).",
+             linesep = "") |>
+  kableExtra::column_spec(1, width = "0.6cm") |>
+  kableExtra::column_spec(2, width = "5.5cm") |>
+  kableExtra::column_spec(3, width = "7cm")
 ```
 
 # Motivation and significance
@@ -193,21 +198,25 @@ methods_df <- data.frame(
     "diagnostic residual plots (default), or the underlying glmnet coefficient path / cv.glmnet curve",
     "broom-compatible tidy tibble of coefficients",
     "broom-compatible one-row model-level tibble",
-    "accessor returning the underlying glmnet object verbatim",
-    "accessor returning the underlying cv.glmnet object when lambda selection used CV"
+    "accessor returning the underlying glmnet object",
+    "accessor returning the underlying cv.glmnet object"
   ),
   stringsAsFactors = FALSE
 )
-knitr::kable(methods_df, caption = "S3 methods defined on the regularized_glm class.")
+knitr::kable(methods_df, format = "latex", booktabs = TRUE,
+             caption = "S3 methods defined on the regularized\\_glm class.",
+             linesep = "") |>
+  kableExtra::column_spec(1, width = "2.5cm") |>
+  kableExtra::column_spec(2, width = "10cm")
 ```
 
 Supported model families are the full `glmnet` surface — `gaussian`,
 `binomial`, `poisson`, `cox`, `multinomial`, `mgaussian` — plus
-arbitrary `stats::family` objects such as `stats::Gamma(link = "log")`
-and `MASS::negative.binomial(theta = ...)` (fixed dispersion). Native
-Cox is invoked by passing a `Surv(time, event)` response with
-`family = "cox"`; the vignette also walks through the piecewise
-exponential Poisson formulation as an alternative.
+arbitrary `stats::family` objects such as `stats::Gamma` and
+`MASS::negative.binomial` (with a fixed dispersion `theta`). Native
+Cox is invoked with a `Surv()` response and `family = "cox"`; the
+vignette also walks through the piecewise exponential Poisson
+formulation as an alternative.
 
 The prediction path deserves brief comment because it is the point at
 which most `glmnet` callers get injured. Given a fitted
@@ -345,9 +354,7 @@ Any row with an `NA` in the response or in one of the predictors is
 dropped, and the exact tally lands on the fit object — the same
 `nobs_info` bookkeeping is available across every supported family.
 The `vignette("fbrglm-families")` bundled with the package walks the
-remaining families (`multinomial`, `mgaussian`, arbitrary `stats::family`
-objects, `MASS::negative.binomial`) end-to-end using the same
-formula-first pattern.
+remaining families end-to-end using the same formula-first pattern.
 
 # Impact
 
@@ -374,9 +381,9 @@ code disappear at the API level:
   classical Wald statistics for penalized fits and pointing users to
   post-selection inference [@tibshirani2016selective].
 - **Interoperability.** `broom` [@broom] methods (`tidy`, `glance`) are
-  provided directly; `as_glmnet()` and `as_cv_glmnet()` return the
-  underlying objects unchanged, so downstream tooling that expects a
-  raw `glmnet` handle still works.
+  provided directly, and two accessors return the underlying `glmnet`
+  and `cv.glmnet` objects unchanged, so downstream tooling that expects
+  a raw `glmnet` handle still works.
 
 ## Research workflows enabled
 
@@ -404,9 +411,8 @@ maintenance, and per-family dispatch. All of these move into the
 package, leaving the analysis script to say `formula + data + family`
 and read back a `regularized_glm` object that behaves like a `glm`
 fit for `print`, `summary`, `coef`, `predict`, `nobs`, `plot`, and
-`broom` [@broom]. For tidymodels teams, the `as_glmnet()` /
-`as_cv_glmnet()` accessors keep `fbrglm` drop-in with existing
-downstream tooling.
+`broom` [@broom]. For tidymodels teams, the two `glmnet` accessors
+keep `fbrglm` drop-in with existing downstream tooling.
 
 ## Adoption and reproducibility
 
