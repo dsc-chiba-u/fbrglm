@@ -468,6 +468,15 @@ what the user gets is the safety guarantees, error semantics, and
 `glm()`-shaped API that make regularized GLMs safe to hand to a
 production scoring pipeline.
 
+# Funding {-}
+
+This work was supported by JSPS KAKENHI (grant numbers 23K11312,
+24K02011, 24K21269, and 23K23933) and JST A-STEP (grant number
+JPMJTR25UJ) to K.T. K.T. and H.N. are also supported through the
+Data Science Core, Chiba University, which is funded by the JSPS
+Program for Forming Japan's Peak Research Universities (J-PEAKS;
+Grant Number JPJS00420230002).
+
 # Declaration of competing interest {-}
 
 The authors declare that they have no known competing financial
