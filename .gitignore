@@ -34,3 +34,6 @@ paper/*.tex
 paper/*.spl
 paper/*_files/
 paper/*_cache/
+
+# Manuscript review material (local-only, not for public repo)
+paper/revise/

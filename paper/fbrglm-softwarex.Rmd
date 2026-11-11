@@ -221,16 +221,11 @@ Cox is invoked with a `Surv()` response and `family = "cox"`; the
 vignette also walks through the piecewise exponential Poisson
 formulation as an alternative.
 
-The prediction path deserves brief comment because it is the point at
-which most `glmnet` callers get injured. Given a fitted
-`regularized_glm` object and a `newdata` data frame, `predict()`
-reconstructs the design matrix by calling `model.matrix` against the
+The prediction path reconstructs the design matrix against the
 **stored** `terms` and `xlevels` — not against the levels present in
-`newdata`. If `newdata` contains a factor level that was not seen at
-fit time, `predict()` raises a clear error by default; passing
-`on_new_levels = "na"` returns `NA` predictions for the affected rows
-instead, which is the appropriate behavior in production scoring
-pipelines where scoring must not halt on a single unseen level.
+`newdata` — which is where most `glmnet` callers get injured. A
+factor level unseen at fit time raises a clear error by default;
+`on_new_levels = "na"` returns `NA` for the affected rows instead.
 
 # Illustrative examples
 
@@ -240,11 +235,11 @@ We use `MASS::birthwt` [@MASS], the canonical low-birth-weight cohort
 (Springfield, MA, 1986; 189 obstetric records with `low`, an indicator
 for birth weight below 2500 g, as the response). It exercises every
 safety feature `fbrglm` adds on top of `glmnet`: an ethnicity factor
-whose levels vary between train and test slices, a "cleaned" derived
-column that turns out to be a linear combination of an existing
-factor (a classic data-engineering accident that surfaces as rank
-deficiency), and the `glm()`-style coefficient / summary contract on
-the fit object.
+whose level definition is lost by common downstream cleaning, a
+"cleaned" derived column that turns out to be a linear combination
+of an existing factor (a classic data-engineering accident that
+surfaces as rank deficiency), and the `glm()`-style coefficient /
+summary contract on the fit object.
 
 ```{r birthwt-setup, include = FALSE}
 ## Silently run the same setup shown below so `fit` / `train` / `test`
@@ -336,16 +331,16 @@ plot(fit)
 graphics::par(op)
 ```
 
-The split also stresses the predict path: the 39-row test batch
-happens to contain 19 `white`, 0 `black`, and 20 `other` observations,
-so `model.matrix(~ ., test)` would build a design matrix with fewer
-columns than `model.matrix(~ ., train)` — the exact conditions under
-which a hand-built `glmnet` call raises "number of variables in newx
-must be N". `predict(fit, newdata = test)` succeeds, because the
-design matrix is reconstructed against the **stored** `xlevels`
-rather than the levels present in `test`; a truly unseen level would
-raise a checked error by default, or return `NA` under
-`on_new_levels = "na"`.
+The split also stresses the predict path. R preserves factor levels
+under ordinary subsetting, so the 0-`black` test slice above does
+not by itself cause a column mismatch; that happens when a
+downstream step (e.g. `droplevels`) erases the training-time level
+definition and a hand-built `glmnet` call then raises "number of
+variables in newx must be N". `predict(fit, newdata = ...)` on an
+`fbrglm` fit succeeds, because the design matrix is reconstructed
+against the **stored** `xlevels` rather than the levels present in
+the newdata; a truly unseen level would raise a checked error by
+default, or return `NA` under `on_new_levels = "na"`.
 
 ## Cox regression on `lung` with missing-data reporting
 
