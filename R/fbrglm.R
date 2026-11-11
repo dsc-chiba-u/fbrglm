@@ -191,7 +191,12 @@ fbrglm <- function(formula,
     m <- match(c("formula", "data", "weights", "offset"),
                names(mf_call), 0L)
     mf_call <- mf_call[c(1L, m)]
-    mf_call$drop.unused.levels <- TRUE
+    ## Keep user-declared factor levels in xlevels even when some were
+    ## never observed at fit time. Any resulting all-zero dummy column
+    ## is caught by the rank-deficiency check below and reported as an
+    ## NA coefficient (glm() convention), rather than silently
+    ## reducing the level set the fit object remembers.
+    mf_call$drop.unused.levels <- FALSE
     mf_call[[1L]] <- quote(stats::model.frame)
     mf <- eval(mf_call, parent.frame())
 

@@ -174,6 +174,7 @@ predict.fbrglm <- function(object,
     type          <- match.arg(type)
     on_new_levels <- match.arg(on_new_levels)
     novel_rows    <- logical(0)   # length 0 -> no NA masking at the end
+    na_rows       <- logical(0)   # NA values in newdata, masked at the end
 
     if (is.null(newdata)) {
         X <- object$x_train
@@ -215,9 +216,18 @@ predict.fbrglm <- function(object,
         }
 
         Terms <- stats::delete.response(object$terms)
-        mf <- stats::model.frame(Terms, newdata, xlev = object$xlevels)
+        mf <- stats::model.frame(Terms, newdata, xlev = object$xlevels,
+                                 na.action = stats::na.pass)
         X_full <- stats::model.matrix(Terms, mf,
                                       contrasts.arg = object$contrasts)
+        ## Rows with NA in any required column reach model.matrix as
+        ## NA-bearing. Preserve row alignment with `newdata` by zeroing
+        ## them here and masking the prediction at the end - same
+        ## contract as the on_new_levels = "na" novel-level branch.
+        na_rows <- rowSums(is.na(X_full)) > 0L
+        if (any(na_rows)) {
+            X_full[na_rows, ] <- 0
+        }
         intercept_idx <- which(colnames(X_full) == "(Intercept)")
         X <- if (length(intercept_idx)) {
             X_full[, -intercept_idx, drop = FALSE]
@@ -279,11 +289,15 @@ predict.fbrglm <- function(object,
     fam_name <- .fbrglm_family_label(object)
 
     .mask_novel <- function(out) {
-        if (!length(novel_rows) || !any(novel_rows)) return(out)
+        masked <- if (length(novel_rows)) novel_rows else logical(0)
+        if (length(na_rows)) {
+            masked <- if (length(masked)) masked | na_rows else na_rows
+        }
+        if (!length(masked) || !any(masked)) return(out)
         if (is.matrix(out)) {
-            out[novel_rows, ] <- NA
+            out[masked, ] <- NA
         } else {
-            out[novel_rows] <- NA
+            out[masked] <- NA
         }
         out
     }
