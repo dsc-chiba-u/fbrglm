@@ -1,0 +1,37 @@
+# Local-only manuscript review material (never ship inside image)
+paper/revise/
+
+# Rendered manuscript outputs (regenerated from paper/*.Rmd)
+paper/*.pdf
+paper/*.log
+paper/*.tex
+paper/*.spl
+paper/*.html
+paper/*_files/
+paper/*_cache/
+
+# Git / editor / IDE
+.git/
+.github/
+.gitignore
+.gitattributes
+*.Rproj
+.Rproj.user/
+.vscode/
+.idea/
+
+# R session / history / build artifacts
+.Rhistory
+.Rapp.history
+.RData
+.Ruserdata
+*.tar.gz
+*.Rcheck/
+src/*.o
+src/*.so
+src/*.dll
+
+# OS
+.DS_Store
+*~
+*.swp
