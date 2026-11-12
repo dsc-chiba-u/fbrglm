@@ -37,8 +37,8 @@ abstract: |
   workflow: frozen `terms` / `xlevels` / `contrasts` on the fit
   object, NA coefficients for rank-deficient columns, and an inference
   policy that suppresses classical SE / z / p / CI under
-  regularization. Predictions are bit-identical to raw `glmnet` across
-  all eight supported families.
+  regularization. Predictions match raw `glmnet` numerically on
+  rank-full designs across all eight supported families.
 keywords:
   - regularized generalized linear models
   - glmnet
@@ -176,8 +176,8 @@ S3 methods that operate on the returned `regularized_glm` object.
 `(x, y)` to `glmnet::glmnet` (or `glmnet::cv.glmnet`) verbatim. It
 then wraps the returned `glmnet` (or `cv.glmnet`) object together
 with the frozen model recipe, a rank check performed by QR-pivot on
-the column-centered design matrix (`tol = 1e-7`, matching the
-convention used inside `stats::glm.fit`), and a small `nobs_info`
+the column-centered design matrix (`qr_tol = 1e-7`, with
+`rank_policy` selecting drop vs keep), and a small `nobs_info`
 bookkeeping record (`n_total` / `n_dropped_missing` / `n_used`) into a
 single `regularized_glm` object.
 
@@ -416,8 +416,8 @@ share the `regularized_glm` return type. The companion benchmark
 [@fbrglm-experiments] uses this uniformity for an
 $8 \times 5 = 40$-cell parity sweep against raw `glmnet`,
 `glmnetUtils` [@glmnetUtils], and a `parsnip` [@parsnip] /
-`workflows` [@workflows] pipeline; every `fbrglm` cell is
-bit-identical to raw `glmnet`.
+`workflows` [@workflows] pipeline on rank-full designs; every
+`fbrglm` cell matches raw `glmnet` to zero absolute difference.
 
 ## Changes in daily practice
 
@@ -438,17 +438,12 @@ v0.1.0 on 2026-07-14; the package has recorded on the order of 200
 CRAN downloads across the two releases in its first weeks. Continuous
 integration on GitHub runs `R CMD check` on four platforms per push,
 and a companion Docker image is republished to Docker Hub and GHCR
-on every merge. The runtime overhead of the safety layer is modest:
-in a small binomial runtime grid, `fbrglm` sits within roughly
-2–3$\times$ the raw-`glmnet` cost — comparable to `glmnetUtils` and
-consistently lighter than the `parsnip` / `workflows` path in the
-tested setting; these numbers are illustrative rather than a general
-benchmark, but they establish that the safety layer is not a numerical
-compromise. The release used in the companion study is archived at
-[@fbrglm]; the corresponding replication material is at
-[@fbrglm-experiments]. The MIT license permits both academic and
-commercial use; no commercial deployments are known to the authors at
-the time of writing.
+on every merge. In a small binomial runtime grid, `fbrglm` sits
+within roughly 2–3$\times$ the raw-`glmnet` cost — comparable to
+`glmnetUtils` and lighter than the `parsnip` / `workflows` path.
+The release is archived at [@fbrglm] and the replication material
+at [@fbrglm-experiments]; the MIT license permits academic and
+commercial use.
 
 # Conclusions
 
