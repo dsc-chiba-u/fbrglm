@@ -22,6 +22,8 @@ fbrglm(
   alpha = 1,
   lambda = c("cv_min", "cv_1se", "fix"),
   lambda_value = NULL,
+  rank_policy = c("drop", "keep"),
+  qr_tol = 1e-07,
   x = NULL,
   y = NULL,
   ...
@@ -61,6 +63,21 @@ Stored only; not yet used.}
 
 \item{lambda_value}{Numeric \code{lambda} used when \code{lambda = "fix"}.}
 
+\item{rank_policy}{How to handle linearly dependent columns surfaced
+by the pre-fit QR. \code{"drop"} (default, \code{stats::glm()}-like) removes
+them before calling glmnet and reports the removed coefficients as
+\code{NA}. \code{"keep"} bypasses the drop and hands the full design matrix
+to glmnet; the L1 / L2 penalty disambiguates, so coefficients come
+back for every column. \code{rank_info$rank_deficient} and
+\code{rank_info$dropped_cols} are populated identically in both modes
+from the same QR diagnostic; only \code{rank_info$dropped_applied}
+reflects whether any column was actually removed.}
+
+\item{qr_tol}{Tolerance used by the pre-fit QR pivot that detects
+linearly dependent columns (default \code{1e-7}, matching base R's
+\code{stats::lm.fit} / LINPACK \code{dqrls}). Smaller values make the check
+more permissive (fewer columns flagged as dependent).}
+
 \item{x, y}{Optional pre-built design matrix and response. Not yet
 supported; supply \code{formula} + \code{data} instead.}
 
@@ -77,11 +94,14 @@ a family object), \code{family_name} (a short display string), \code{weights},
 \code{nonzero}, \code{terms}, \code{xlevels}, \code{contrasts}, \code{x_colnames}, \code{x_train},
 \code{nobs_info} (\code{n_total} / \code{n_dropped_missing} / \code{n_used}), and
 \code{rank_info} (\code{rank} / \code{ncol} / \code{rank_deficient} / \code{pivot} /
-\code{kept_cols} / \code{dropped_cols}). When the design is rank-deficient,
-linearly dependent columns are dropped before fitting (in the
-spirit of \code{\link[stats:glm]{stats::glm()}}); their entries in \code{coefficients} are
-reported as \code{NA} to distinguish "not identifiable" from
-"shrunk to zero by penalty".
+\code{kept_cols} / \code{dropped_cols} / \code{policy} / \code{tol} /
+\code{dropped_applied}). When the design is rank-deficient and
+\code{rank_policy = "drop"} (default), linearly dependent columns are
+removed before fitting (in the spirit of \code{\link[stats:glm]{stats::glm()}}) and their
+entries in \code{coefficients} are reported as \code{NA} to distinguish
+"not identifiable" from "shrunk to zero by penalty". When
+\code{rank_policy = "keep"}, the full design is handed to glmnet and
+every column receives a (penalised) coefficient.
 }
 \description{
 Fits a regularized generalized linear model with a formula/data interface

@@ -74,9 +74,15 @@ print.fbrglm <- function(x, ...) {
     }
     ri <- x$rank_info
     if (isTRUE(ri$rank_deficient)) {
-        cat(sprintf("Rank deficiency: %d / %d columns dropped (NA in coef): %s\n",
-                    length(ri$dropped_cols), ri$ncol,
-                    paste(ri$dropped_cols, collapse = ", ")))
+        if (isTRUE(ri$dropped_applied)) {
+            cat(sprintf("Rank deficiency: %d / %d columns dropped (NA in coef): %s\n",
+                        length(ri$dropped_cols), ri$ncol,
+                        paste(ri$dropped_cols, collapse = ", ")))
+        } else {
+            cat(sprintf("Rank deficiency: %d / %d columns linearly dependent (rank_policy = \"keep\", not dropped): %s\n",
+                        length(ri$dropped_cols), ri$ncol,
+                        paste(ri$dropped_cols, collapse = ", ")))
+        }
     }
     invisible(x)
 }
@@ -119,7 +125,11 @@ print.summary.fbrglm <- function(x, ...) {
                 ni$n_total, ni$n_dropped_missing, ni$n_used))
 
     ri <- x$rank_info
-    rd <- isTRUE(ri$rank_deficient)
+    ## Only report "not defined because of singularities" when columns
+    ## were actually dropped. With rank_policy = "keep" the penalty
+    ## disambiguates and every column receives a coefficient, so the
+    ## glm()-style header is not appropriate.
+    rd <- isTRUE(ri$dropped_applied)
     header <- if (rd) {
         sprintf("Coefficients: (%d not defined because of singularities: %s)",
                 length(ri$dropped_cols),
@@ -239,14 +249,15 @@ predict.fbrglm <- function(object,
         ## above (on_new_levels = "error", the glm() default) or were
         ## substituted to the reference and will be NA'd out below.
         X <- .fbrglm_align_x(X, object$x_colnames)
-        ## If the model was fit with rank-deficient drops, restrict
-        ## newdata to the same kept columns the underlying glmnet fit
-        ## actually saw. NA-valued coefficients live in `coefficients`,
-        ## not in the underlying glmnet object.
-        kept_cols <- object$rank_info$kept_cols
-        if (!is.null(kept_cols) &&
-            length(object$rank_info$dropped_cols)) {
-            X <- X[, kept_cols, drop = FALSE]
+        ## If the model was fit with columns actually dropped
+        ## (rank_policy = "drop" and rank-deficient), restrict newdata
+        ## to the same kept columns the underlying glmnet fit saw.
+        ## Under rank_policy = "keep" glmnet saw the full design, so
+        ## we must pass the full design here too. NA-valued
+        ## coefficients live in `coefficients`, not in the underlying
+        ## glmnet object.
+        if (isTRUE(object$rank_info$dropped_applied)) {
+            X <- X[, object$rank_info$kept_cols, drop = FALSE]
         }
     }
 
@@ -535,6 +546,8 @@ glance.fbrglm <- function(x, ...) {
         rank              = ri$rank,
         rank_dropped      = length(ri$dropped_cols),
         rank_deficient    = isTRUE(ri$rank_deficient),
+        rank_policy       = ri$policy %||% "drop",
+        rank_dropped_applied = isTRUE(ri$dropped_applied),
         nonzero           = nz,
         deviance          = .fbrglm_deviance(x),
         cvm_at_lambda     = .fbrglm_cv_stat(x, "cvm"),
