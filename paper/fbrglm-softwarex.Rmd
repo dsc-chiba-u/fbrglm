@@ -186,6 +186,21 @@ the column-centered design matrix (`qr_tol = 1e-7`, with
 bookkeeping record (`n_total` / `n_dropped_missing` / `n_used`) into a
 single `regularized_glm` object.
 
+Three QR design choices are worth naming. The design matrix is
+intercept-stripped (glmnet handles the intercept) and column-centered
+before the pivot, so the deficiency set matches what `stats::glm.fit`
+would report on the intercept-inclusive design via the identity
+`rank(scale(X, center = TRUE)) == rank(cbind(1, X)) - 1`
+[@golub2013matrix]. Near-dependence that does not reach `qr_tol` is
+left to the penalty rather than pruned at the design stage — highly
+correlated predictors are an intended use case for regularization —
+and `qr_tol` is exposed so stricter or looser regimes can be
+requested without touching package internals. The pivot order is
+column-order-sensitive when multiple equivalent dependency-breaking
+choices exist; `fbrglm` sorts the kept indices back to the user's
+original formula order (`sort(pivot[seq_len(rank)])`), so the stored
+`kept_cols` / `dropped_cols` are always reported in formula order.
+
 ## Software functionalities
 
 Table 2 lists the S3 methods that operate on a `regularized_glm`.
@@ -301,14 +316,10 @@ summary(fit)
 #> Coefficients: (1 not defined because of singularities: any_visit)
 #>                Estimate
 #>   (Intercept)   -0.3423
-#>   age           -0.0027
-#>   lwt           -0.0042
-#>   raceblack      0.0000
-#>   raceother      0.0000
 #>   smokeyes       0.5156
 #>   ptl            0.2526
-#>   ftv1..ftv6     0.0000     (all shrunk to zero at this lambda)
 #>   any_visit           NA
+#>   ... (8 others, 6 shrunk to zero at this lambda)
 #>
 #> Non-zero predictors (4): age, lwt, smokeyes, ptl
 #> Note: no standard errors / z / p under infer = "none".
@@ -345,7 +356,20 @@ variables in newx must be N". `predict(fit, newdata = ...)` on an
 `fbrglm` fit succeeds, because the design matrix is reconstructed
 against the **stored** `xlevels` rather than the levels present in
 the newdata; a truly unseen level would raise a checked error by
-default, or return `NA` under `on_new_levels = "na"`.
+default, or return `NA` under `on_new_levels = "na"`:
+
+```{r birthwt-na-policy, eval = FALSE}
+test_novel <- test; test_novel$race[1:2] <- "amber"  # unseen level
+head(predict(fit, newdata = test_novel, on_new_levels = "na"), 4)
+#> Warning: predict.fbrglm: 2 row(s) assigned NA (unseen levels)
+#>         1       2        3        4
+#>        NA      NA  -0.4571  -0.5103
+```
+
+The warning names the number of masked rows, and per-observation
+`NA` is assigned to the entire prediction vector (not to a
+design-matrix cell), so affected rows are identifiable by
+`which(is.na(pred))`.
 
 ## Cox regression on `lung` with missing-data reporting
 
@@ -378,46 +402,79 @@ dropped, and the exact tally lands on the fit object — the same
 The `vignette("fbrglm-families")` bundled with the package walks the
 remaining families end-to-end using the same formula-first pattern.
 
+## Feature comparison with existing packages
+
+Table 3 maps the six safety-and-workflow axes the reviewers asked
+about onto `glmnet`, `glmnetUtils`, a `parsnip` / `workflows`
+pipeline, and `fbrglm`. The cells for `fbrglm` and the comparators
+are derived from the same companion-repository benchmark that
+produced Figure/Section numbers elsewhere in this paper
+[@fbrglm-experiments]; Cox / multinomial / mgaussian behaviour is
+taken from the family-wide parity run.
+
+```{r feature-compare, echo = FALSE}
+feat_df <- data.frame(
+  Feature = c(
+    "Formula interface",
+    "Factor-level persistence across train/test drift",
+    "Rank-deficient columns",
+    "Missing-data reporting",
+    "Predict on narrowed factor",
+    "Classical inference contract"),
+  glmnet          = c("no (x, y matrix)", "caller-maintained", "silent",
+                     "caller handles", "hard error", "silent"),
+  glmnetUtils     = c("yes (basic)",      "re-infer from newdata",
+                     "silent", "complete-case drop",
+                     "error / column mismatch", "silent"),
+  parsnip_wf      = c("yes (recipe-based)", "hardhat-stored",
+                     "silent", "recipe step",
+                     "survives",         "silent"),
+  fbrglm          = c("yes (glm-style)", "frozen xlevels on fit",
+                     "NA (default) / keep",
+                     "n_total / n_dropped / n_used",
+                     "survives + checked NA",
+                     "suppressed, policy printed"),
+  stringsAsFactors = FALSE,
+  check.names = FALSE
+)
+names(feat_df) <- c("Feature", "glmnet", "glmnetUtils",
+                    "parsnip / workflows", "fbrglm")
+knitr::kable(feat_df, format = "latex", booktabs = TRUE,
+             caption = "Feature matrix: safety and workflow behaviour of fbrglm against three incumbent regularized-GLM interfaces.",
+             linesep = "") |>
+  kableExtra::kable_styling(latex_options = c("HOLD_position", "scale_down")) |>
+  kableExtra::column_spec(1, width = "3.6cm")
+```
+
 # Impact
 
 ## Improvement to existing regularized-GLM analyses
 
 `fbrglm` is directly applicable to any project that uses `glmnet` for
 regularized GLMs — from small ad-hoc analyses to production scoring
-pipelines. Four categories of failure that are common in raw-`glmnet`
-code disappear at the API level:
-
-- **Predict-time robustness.** Factor-level mismatch becomes a
-  checked error — or controlled `NA` under `on_new_levels = "na"` —
-  rather than a low-level `glmnet` crash. In the companion
-  benchmark [@fbrglm-experiments], 3 of 5 tested workflows fail on a
-  narrowed test factor; `fbrglm` and the hardhat-backed `parsnip`
-  workflow are the two survivors.
-- **Interpretability of "zero".** Rank-deficient columns show as
-  `NA` coefficients (`glm()` convention), so a numeric zero means
-  "shrunk by the penalty" rather than "not identifiable".
-- **Inference contract.** The regularization contract is surfaced in
-  every `summary()` call, pointing users to post-selection inference
-  [@tibshirani2016selective] rather than to classical Wald statistics.
-- **Interoperability.** `broom` [@broom] methods (`tidy`, `glance`)
-  are provided directly, and two accessors return the underlying
-  `glmnet` / `cv.glmnet` objects unchanged.
+pipelines. The four API-level improvements over raw `glmnet` are the
+ones named in Table 3: predict-time robustness under narrowed test
+factors (3 of 5 competing workflows fail this check in the companion
+benchmark [@fbrglm-experiments]), unambiguous rank-deficient `NA`
+coefficients so a numeric zero means "shrunk by the penalty" rather
+than "not identifiable", an explicit inference contract directing
+users to post-selection methods rather than invalid Wald statistics
+[@tibshirani2016selective], and drop-in interoperability through
+`broom` [@broom] plus two accessors that return the underlying
+`glmnet` / `cv.glmnet` objects unchanged.
 
 ## Research workflows enabled
 
-The safety layer changes what regularized GLMs can be trusted with,
-not what they compute. Two workflow patterns that were previously
-labor-intensive become routine: **hand-off between exploration and
-production scoring**, where a serialized fit is applied to arriving
-batches without re-materializing the training design matrix; and
-**family-wide analyses**, where a study comparing, e.g., binomial,
-negative binomial, and Gamma fits on the same cohort no longer needs
-a family-specific wrapper per fit — the eight supported families all
-share the `regularized_glm` return type. The companion benchmark
-[@fbrglm-experiments] uses this uniformity for an
-$8 \times 5 = 40$-cell parity sweep against raw `glmnet`,
-`glmnetUtils` [@glmnetUtils], and a `parsnip` [@parsnip] /
-`workflows` [@workflows] pipeline on rank-full designs; every
+Two workflow patterns that were previously labor-intensive become
+routine: **hand-off between exploration and production scoring**,
+where a serialized fit is applied to arriving batches without
+re-materializing the training design matrix; and **family-wide
+analyses**, where the eight supported families share the
+`regularized_glm` return type so no family-specific wrapper is
+needed. The companion benchmark [@fbrglm-experiments] uses this
+uniformity for an $8 \times 5 = 40$-cell parity sweep against raw
+`glmnet`, `glmnetUtils` [@glmnetUtils], and a `parsnip` [@parsnip]
+/ `workflows` [@workflows] pipeline on rank-full designs; every
 `fbrglm` cell matches raw `glmnet` to zero absolute difference.
 
 ## Changes in daily practice
