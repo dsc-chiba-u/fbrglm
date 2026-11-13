@@ -165,6 +165,11 @@ but for imposing a unified interface across pre-existing tools.
 
 ## Software architecture
 
+The released package is installed from CRAN with
+`install.packages("fbrglm")`; the development HEAD tracked in this
+revision is available via
+`remotes::install_github("dsc-chiba-u/fbrglm")`.
+
 `fbrglm` exposes two user-facing entry points — `fbrglm()` for a fixed
 grid of `lambda` values and its `lambda = "cv_min"` / `"cv_1se"`
 shortcuts that delegate to `cv.glmnet` — and a family of `glm()`-style
@@ -325,7 +330,7 @@ from `stats::glm` (Figure 1); raw `glmnet` does not expose
 residuals in the `glm()` sense, so this view is a genuine `fbrglm`
 add-on rather than a pass-through.
 
-```{r birthwt-diag, echo = TRUE, fig.width = 7.2, fig.height = 1.7, out.width = "100%", fig.pos = "!h", fig.cap = "Standard \\texttt{glm}-style diagnostic panel produced by \\texttt{plot(fit)} on the \\texttt{birthwt} fit. Deviance residuals are computed from the family's \\texttt{dev.resids} at the selected \\texttt{lambda}; the two-arc shape is the binomial GLM signature."}
+```{r birthwt-diag, echo = TRUE, fig.width = 7.2, fig.height = 1.7, out.width = "100%", fig.pos = "!h", fig.cap = "Standard \\texttt{glm}-style diagnostic panel produced by \\texttt{plot(fit)} on the \\texttt{birthwt} fit. Deviance residuals are computed from the family's \\texttt{dev.resids} at the selected \\texttt{lambda}; the two-arc shape is the binomial GLM signature. The panels are intended as an exploratory diagnostic: for binomial fits with small event counts, deviance residuals are not expected to be exactly normal, and they do not correct for penalty-induced shrinkage, so a formal assessment should rely on calibration curves and discrimination measures (c-statistic) rather than on the Q--Q panel alone."}
 op <- graphics::par(mfrow = c(1, 3), mar = c(3.5, 3.5, 2, 0.5), mgp = c(2, 0.7, 0))
 plot(fit)
 graphics::par(op)
@@ -382,25 +387,21 @@ regularized GLMs — from small ad-hoc analyses to production scoring
 pipelines. Four categories of failure that are common in raw-`glmnet`
 code disappear at the API level:
 
-- **Predict-time robustness.** Factor-level mismatch between training
-  and scoring data becomes an explicit, checked error — or a
-  controlled `NA` under `on_new_levels = "na"` — rather than a
-  low-level `glmnet` crash. In the companion benchmark
-  [@fbrglm-experiments] this class of failure caused 3 of 5 tested
-  workflows to fail on a narrowed test factor; `fbrglm` and the
-  hardhat-backed `parsnip` workflow are the two paths that survive.
+- **Predict-time robustness.** Factor-level mismatch becomes a
+  checked error — or controlled `NA` under `on_new_levels = "na"` —
+  rather than a low-level `glmnet` crash. In the companion
+  benchmark [@fbrglm-experiments], 3 of 5 tested workflows fail on a
+  narrowed test factor; `fbrglm` and the hardhat-backed `parsnip`
+  workflow are the two survivors.
 - **Interpretability of "zero".** Rank-deficient columns show as
-  `NA` coefficients (`glm()` convention), so a numeric zero in the
-  coefficient table unambiguously means "shrunk by the penalty"
-  rather than "not identifiable in the design".
+  `NA` coefficients (`glm()` convention), so a numeric zero means
+  "shrunk by the penalty" rather than "not identifiable".
 - **Inference contract.** The regularization contract is surfaced in
-  every `summary()` call, discouraging accidental use of unreliable
-  classical Wald statistics for penalized fits and pointing users to
-  post-selection inference [@tibshirani2016selective].
-- **Interoperability.** `broom` [@broom] methods (`tidy`, `glance`) are
-  provided directly, and two accessors return the underlying `glmnet`
-  and `cv.glmnet` objects unchanged, so downstream tooling that expects
-  a raw `glmnet` handle still works.
+  every `summary()` call, pointing users to post-selection inference
+  [@tibshirani2016selective] rather than to classical Wald statistics.
+- **Interoperability.** `broom` [@broom] methods (`tidy`, `glance`)
+  are provided directly, and two accessors return the underlying
+  `glmnet` / `cv.glmnet` objects unchanged.
 
 ## Research workflows enabled
 
@@ -434,16 +435,28 @@ keep `fbrglm` drop-in with existing downstream tooling.
 ## Adoption and reproducibility
 
 `fbrglm` v0.0.1 was released to CRAN on 2026-07-09 and updated to
-v0.1.0 on 2026-07-14; the package has recorded on the order of 200
-CRAN downloads across the two releases in its first weeks. Continuous
-integration on GitHub runs `R CMD check` on four platforms per push,
-and a companion Docker image is republished to Docker Hub and GHCR
-on every merge. In a small binomial runtime grid, `fbrglm` sits
-within roughly 2–3$\times$ the raw-`glmnet` cost — comparable to
-`glmnetUtils` and lighter than the `parsnip` / `workflows` path.
-The release is archived at [@fbrglm] and the replication material
-at [@fbrglm-experiments]; the MIT license permits academic and
+v0.1.0 on 2026-07-14. Continuous integration on GitHub runs `R CMD
+check` on four platforms per push, and a companion Docker image on
+Docker Hub and GHCR pins the exact R and package versions used in
+this paper. In a small binomial runtime grid (5 iterations per
+method/scenario, median reported; raw per-iteration timings in
+`results/raw/runtime_small_raw.csv`) `fbrglm` sits within roughly
+2–3$\times$ the raw-`glmnet` cost — comparable to `glmnetUtils` and
+lighter than the `parsnip` / `workflows` path. The release is
+archived at [@fbrglm] and the replication material at
+[@fbrglm-experiments]; the MIT license permits academic and
 commercial use.
+
+**Inference and limitations.** Classical SE / z / p / CI are
+suppressed because the penalized Hessian does not deliver valid Wald
+quantities [@tibshirani2016selective]; valid routes are
+sample-splitting with inference on the held-out half and selective
+inference conditioning on the selection event
+[@lee2016selective; @chatterjee2011bootstrap], available via
+`selectiveInference` / `hdi`. `qr_tol` is user-configurable with
+`stats::glm.fit`'s default [@golub2013matrix]; Cox, multinomial, and
+mgaussian are experimental for unusual configurations; negative
+binomial inherits `MASS::glm.nb`'s fixed-`theta` fit.
 
 # Conclusions
 
