@@ -2,6 +2,7 @@
 ^TODO\.md$
 ^cran-comments\.md$
 ^Dockerfile$
+^\.dockerignore$
 ^\.gitignore$
 ^\.github$
 ^\.Rproj\.user$
