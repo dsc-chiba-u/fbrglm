@@ -1,3 +1,44 @@
+# fbrglm 0.2.0
+
+* New user-controllable `rank_policy` argument on `fbrglm()` with
+  values `"drop"` (default, backward compatible — linearly dependent
+  columns are removed before the glmnet call and reported as `NA`
+  coefficients, matching `stats::glm()`) and `"keep"` (the full
+  design is handed to glmnet, which handles the collinear design
+  under penalization and returns a coefficient for every column).
+  The `rank_info` list on the fit object records `policy`, `tol`, and
+  `dropped_applied` alongside the existing diagnostic fields.
+
+* New user-controllable `qr_tol` argument on `fbrglm()`, default
+  `1e-7` to match base R's `stats::lm.fit` / LINPACK `dqrls`. Exposes
+  the tolerance of the pre-fit pivoted QR that classifies columns
+  as rank-deficient.
+
+* New warning when the intercept-stripped design has `p >= n` under
+  the default `rank_policy = "drop"`: the pre-fit QR will necessarily
+  flag many columns as linearly dependent and remove them before the
+  glmnet call, which can materially change the fitted path. The
+  warning recommends `rank_policy = "keep"` so that the penalty, not
+  the QR, selects the active set. The default is unchanged.
+
+* Factor-level handling at fit time: `model.frame` is now called with
+  `drop.unused.levels = FALSE`, so user-declared factor levels that
+  were not observed in the training rows are preserved on the fit
+  object's `xlevels`. Any resulting all-zero dummy column is detected
+  by the rank check and reported as an `NA` coefficient, rather than
+  silently narrowing the level set the fit object remembers.
+
+* New test file `tests/testthat/test-rank-policy.R` (14 test blocks)
+  verifies default back-compatibility, keep-mode coefficient parity
+  with raw `glmnet`, keep-mode prediction parity, drop-mode
+  invariance under perturbation of dropped columns, and the new
+  `p >= n` warning and both-mode behaviour.
+
+* New test file `tests/testthat/test-factor-25cases.R` (25-case
+  harness) covers the full A / B / C / D factor-encoding specification
+  including narrowed test factors, novel levels under both
+  `on_new_levels = "error"` and `"na"`, and mixed seen / unseen rows.
+
 # fbrglm 0.1.0
 
 * New `tidy()` method (S3 method for `generics::tidy`) returning a

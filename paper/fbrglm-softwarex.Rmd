@@ -91,7 +91,7 @@ metadata_df <- data.frame(
     "Support email for questions"
   ),
   Value = c(
-    "v0.1.0",
+    "v0.2.0",
     "https://github.com/dsc-chiba-u/fbrglm",
     "MIT",
     "git",
@@ -162,9 +162,12 @@ but for imposing a unified interface across pre-existing tools.
 ## Software architecture
 
 The released package is installed from CRAN with
-`install.packages("fbrglm")`; the development HEAD tracked in this
-revision is available via
-`remotes::install_github("dsc-chiba-u/fbrglm")`.
+`install.packages("fbrglm")`; the exact state used in this submission
+is pinned at tag `softwarex-revision-2` and installable with
+
+```r
+remotes::install_github("dsc-chiba-u/fbrglm@softwarex-revision-2")
+```
 
 `fbrglm` exposes two user-facing entry points — `fbrglm()` for a fixed
 grid of `lambda` values and its `lambda = "cv_min"` / `"cv_1se"`
@@ -182,12 +185,23 @@ the column-centered design matrix (`qr_tol = 1e-7`, with
 bookkeeping record (`n_total` / `n_dropped_missing` / `n_used`) into a
 single `regularized_glm` object.
 
-The QR is intercept-stripped and column-centered, so its
-deficiency set matches `stats::glm.fit` via
-`rank(scale(X)) == rank(cbind(1, X)) - 1` [@golub2013matrix];
-near-dependence below `qr_tol` is left to the penalty, and the
-pivot is sorted back to formula order so `kept_cols` /
-`dropped_cols` are reported in the user's original column order.
+The QR is intercept-stripped and column-centered: for
+$X_c = \mathrm{scale}(X,\, \texttt{center = TRUE},\, \texttt{scale = FALSE})$,
+$\mathrm{rank}(X_c) = \mathrm{rank}(\mathrm{cbind}(1, X)) - 1$
+[@golub2013matrix], so the deficiency set matches what
+`stats::glm.fit` reports on the intercept-included design. Columns
+whose pivoted-QR diagonal falls below `qr_tol` (default `1e-7`,
+matching LINPACK `dqrls`) are flagged as rank-deficient and handled
+per `rank_policy`; `qr_tol` is the single knob that moves the
+near-dependence boundary. The `kept_cols` / `dropped_cols` labels on
+the fit object are sorted back to the user's formula order for
+reporting, independently of the pivot's algorithmic choice among
+numerically equivalent drop candidates. In the high-dimensional
+regime ($p \geq n$ for the intercept-stripped design) the
+column-centered rank is capped at $\min(n - 1, p)$, so the default
+`"drop"` necessarily flags many columns; `fbrglm` emits a warning
+in that case and recommends `rank_policy = "keep"` so the penalty,
+not the QR, selects the active set.
 
 ## Software functionalities
 
@@ -381,17 +395,21 @@ against the **stored** `xlevels` rather than the levels present in
 the newdata; a truly unseen level would raise a checked error by
 default, or return `NA` under `on_new_levels = "na"`:
 
-```{r birthwt-na-policy, eval = FALSE}
-test_novel <- test; test_novel$race[1:2] <- "amber"  # unseen level
+```{r birthwt-na-policy}
+## Inject a truly unseen level. Ordinary factor assignment coerces
+## unknown strings to NA, so first promote `race` to character.
+test_novel <- test
+test_novel$race <- as.character(test_novel$race)
+test_novel$race[1:2] <- "amber"
 head(predict(fit, newdata = test_novel, on_new_levels = "na"), 4)
-#> Warning: predict.fbrglm: 2 row(s) assigned NA (unseen levels)
-#>         1       2        3        4
-#>        NA      NA  -0.4571  -0.5103
 ```
 
 The warning reports the masked-row count; per-observation `NA` is
 assigned to the whole prediction (not a design-matrix cell), so
-affected rows are `which(is.na(pred))`.
+affected rows are `which(is.na(pred))`. The companion
+`on_new_levels = "error"` policy raises a checked error on the same
+input — both branches are machine-checked in blocks C1–C7 of
+`test-factor-25cases.R`.
 
 ## Cox regression on `lung` with missing-data reporting
 
@@ -468,12 +486,15 @@ binomial runtime grid (5 iterations per method, raw timings in
 lighter than the `parsnip` / `workflows` path. Release at
 [@fbrglm], replication at [@fbrglm-experiments], MIT-licensed.
 Classical SE / z / p / CI are suppressed under regularization
-[@tibshirani2016selective]; post-selection inference via
-`selectiveInference` / `hdi`
-[@lee2016selective; @chatterjee2011bootstrap] is available
-externally. Cox, multinomial, and mgaussian are experimental for
-unusual configurations; negbin inherits `MASS::glm.nb`'s
-fixed-`theta` fit.
+[@tibshirani2016selective]; dedicated post-selection procedures are
+available externally, including exact selective inference for the
+lasso [@lee2016selective] and modified bootstrap approaches
+[@chatterjee2011bootstrap]. Rank-deficiency classification depends on
+`qr_tol`; near-collinear designs may be classified differently under
+alternative tolerances, and sensitivity checks are advisable when the
+numerical rank is ambiguous. Cox, multinomial, and mgaussian are
+experimental for unusual configurations; negbin inherits
+`MASS::glm.nb`'s fixed-`theta` fit.
 
 # Conclusions
 

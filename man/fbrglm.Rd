@@ -67,11 +67,15 @@ Stored only; not yet used.}
 by the pre-fit QR. \code{"drop"} (default, \code{stats::glm()}-like) removes
 them before calling glmnet and reports the removed coefficients as
 \code{NA}. \code{"keep"} bypasses the drop and hands the full design matrix
-to glmnet; the L1 / L2 penalty disambiguates, so coefficients come
-back for every column. \code{rank_info$rank_deficient} and
-\code{rank_info$dropped_cols} are populated identically in both modes
+to glmnet; the penalty then decides which columns to shrink, and
+coefficients come back for every column. \code{rank_info$rank_deficient}
+and \code{rank_info$dropped_cols} are populated identically in both modes
 from the same QR diagnostic; only \code{rank_info$dropped_applied}
-reflects whether any column was actually removed.}
+reflects whether any column was actually removed. In the
+high-dimensional regime (\code{p >= n} for the intercept-stripped
+design) the default \code{"drop"} will necessarily flag many columns as
+linearly dependent and remove them before fitting; \code{fbrglm} emits a
+warning in that case and recommends \code{rank_policy = "keep"}.}
 
 \item{qr_tol}{Tolerance used by the pre-fit QR pivot that detects
 linearly dependent columns (default \code{1e-7}, matching base R's

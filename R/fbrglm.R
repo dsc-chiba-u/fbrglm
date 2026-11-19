@@ -53,11 +53,15 @@
 #'   by the pre-fit QR. `"drop"` (default, `stats::glm()`-like) removes
 #'   them before calling glmnet and reports the removed coefficients as
 #'   `NA`. `"keep"` bypasses the drop and hands the full design matrix
-#'   to glmnet; the L1 / L2 penalty disambiguates, so coefficients come
-#'   back for every column. `rank_info$rank_deficient` and
-#'   `rank_info$dropped_cols` are populated identically in both modes
+#'   to glmnet; the penalty then decides which columns to shrink, and
+#'   coefficients come back for every column. `rank_info$rank_deficient`
+#'   and `rank_info$dropped_cols` are populated identically in both modes
 #'   from the same QR diagnostic; only `rank_info$dropped_applied`
-#'   reflects whether any column was actually removed.
+#'   reflects whether any column was actually removed. In the
+#'   high-dimensional regime (`p >= n` for the intercept-stripped
+#'   design) the default `"drop"` will necessarily flag many columns as
+#'   linearly dependent and remove them before fitting; `fbrglm` emits a
+#'   warning in that case and recommends `rank_policy = "keep"`.
 #' @param qr_tol Tolerance used by the pre-fit QR pivot that detects
 #'   linearly dependent columns (default `1e-7`, matching base R's
 #'   `stats::lm.fit` / LINPACK `dqrls`). Smaller values make the check
@@ -249,17 +253,39 @@ fbrglm <- function(formula,
     x_colnames <- colnames(X)
     xlevels <- stats::.getXlevels(Terms, mf)
 
+    ## High-dimensional recommendation: when the intercept-stripped
+    ## design has p >= n columns and the (default) "drop" policy is in
+    ## effect, the pre-fit QR will necessarily flag many columns as
+    ## linearly dependent (column-centered rank is capped at min(n - 1,
+    ## p)) and drop them before glmnet sees the design. That can
+    ## materially change the fitted path, so recommend "keep" explicitly.
+    ## The default is not changed, preserving backward compatibility.
+    if (ncol(X) >= nrow(X) && rank_policy == "drop") {
+        warning(sprintf(
+            paste0("fbrglm: p = %d >= n = %d under rank_policy = \"drop\" ",
+                   "(the default). The pre-fit QR pivot will flag many ",
+                   "columns as linearly dependent and drop them before the ",
+                   "glmnet call, which can materially change the fitted ",
+                   "path. Consider rank_policy = \"keep\" so the penalty, ",
+                   "not the QR, decides which columns to shrink."),
+            ncol(X), nrow(X)),
+            call. = FALSE)
+    }
+
     ## Rank-deficiency check, glm()-style. stats::glm.fit / lm.fit run a
     ## column-pivoted QR (LINPACK's dqrls with tol = 1e-7) on the full
     ## design matrix INCLUDING the intercept. Because glmnet handles the
-    ## intercept itself, we work on the intercept-stripped X but center
-    ## each column first: rank(scale(X, center = TRUE)) equals
-    ## rank(cbind(1, X)) - 1, so the deficiency set is identical to
-    ## what glm() would report, while the intercept never has to compete
-    ## for a slot in the pivot. The independent subset is taken as
-    ## `pivot[1:rank]` (sorted to preserve the user's original column
-    ## order), matching glm()'s coefficient layout. Dropped columns get
-    ## NA at coef() time below.
+    ## intercept itself, we work on the intercept-stripped X and
+    ## column-center it (centering only, no variance scaling); for
+    ## X_c = scale(X, center = TRUE, scale = FALSE),
+    ## rank(X_c) == rank(cbind(1, X)) - 1, so the deficiency set is
+    ## identical to what glm() reports on the intercept-included
+    ## design, and the intercept never competes for a slot in the pivot.
+    ## The independent subset is taken as `pivot[1:rank]`, then sorted
+    ## back to the user's original formula order for stable labeling
+    ## in kept_cols / dropped_cols; this reporting order is independent
+    ## of the pivot's algorithmic choice among numerically equivalent
+    ## drop candidates. Dropped columns get NA at coef() time below.
     ncol_full <- ncol(X)
     if (ncol_full > 0L) {
         X_centered <- sweep(X, 2L, colMeans(X), "-", check.margin = FALSE)
@@ -286,9 +312,10 @@ fbrglm <- function(formula,
             paste(dropped_cols, collapse = ", ")),
             "Their coefficients will be reported as NA, as in stats::glm().")
     } else if (rank_deficient) {
-        ## rank_policy = "keep": hand the full design to glmnet and let
-        ## the L1 / L2 penalty disambiguate. kept_cols / dropped_cols
-        ## still record what the QR flagged, for diagnostics.
+        ## rank_policy = "keep": hand the full design to glmnet, which
+        ## then handles the collinear design under penalization.
+        ## kept_cols / dropped_cols still record what the QR flagged,
+        ## for diagnostics.
         X_fit <- X
         message(sprintf(
             "fbrglm: design is rank-deficient (rank %d / %d), rank_policy = \"keep\"; passing all columns to glmnet. Columns flagged by QR: %s.",

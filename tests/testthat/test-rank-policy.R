@@ -313,3 +313,101 @@ test_that("binomial + factor collinearity: rank_policy = keep returns all coefs"
     expect_true(any(is.na(stats::coef(fit_drop))))
     expect_false(any(is.na(stats::coef(fit_keep))))
 })
+
+## ----- high-dimensional (p >= n) warning and policy branches --------
+##
+## Addresses SOFTX-D-26-00949 revision 2 指示 2 (Nishiuchi): when
+## p >= n under the default rank_policy = "drop", fbrglm must warn the
+## user that many columns will be dropped before the glmnet call and
+## recommend rank_policy = "keep". The default is not changed. The
+## check fires on the intercept-stripped column count.
+
+make_pgtn <- function(n = 40L, p = 50L, seed = 1234L) {
+    set.seed(seed)
+    X <- matrix(rnorm(n * p), n, p)
+    colnames(X) <- paste0("x", seq_len(p))
+    df <- as.data.frame(X)
+    df$y <- rbinom(n, 1, 0.5)
+    df
+}
+
+test_that("p > n under default 'drop' emits the keep-recommendation warning", {
+    df <- make_pgtn(n = 40L, p = 50L, seed = 1001L)
+    fml <- stats::as.formula(
+        paste("y ~", paste(setdiff(names(df), "y"), collapse = "+")))
+    w <- tryCatch(
+        suppressMessages(
+            fbrglm(fml, data = df, family = "binomial",
+                   lambda = "fix", lambda_value = 0.05)
+        ),
+        warning = function(e) conditionMessage(e)
+    )
+    expect_type(w, "character")
+    expect_match(w, "p = 50 >= n = 40")
+    expect_match(w, 'rank_policy = "drop"')
+    expect_match(w, 'rank_policy = "keep"')
+})
+
+test_that("p == n under default 'drop' also emits the warning", {
+    df <- make_pgtn(n = 20L, p = 20L, seed = 1002L)
+    fml <- stats::as.formula(
+        paste("y ~", paste(setdiff(names(df), "y"), collapse = "+")))
+    w <- tryCatch(
+        suppressMessages(
+            fbrglm(fml, data = df, family = "binomial",
+                   lambda = "fix", lambda_value = 0.05)
+        ),
+        warning = function(e) conditionMessage(e)
+    )
+    expect_type(w, "character")
+    expect_match(w, "p = 20 >= n = 20")
+})
+
+test_that("p > n under 'keep' is silent (no keep-recommendation warning)", {
+    df <- make_pgtn(n = 40L, p = 50L, seed = 1003L)
+    fml <- stats::as.formula(
+        paste("y ~", paste(setdiff(names(df), "y"), collapse = "+")))
+    expect_warning(
+        suppressMessages(
+            fit <- fbrglm(fml, data = df, family = "binomial",
+                          lambda = "fix", lambda_value = 0.05,
+                          rank_policy = "keep")
+        ),
+        regexp = NA  # no warnings expected
+    )
+    expect_equal(fit$rank_info$policy, "keep")
+    expect_false(fit$rank_info$dropped_applied)
+})
+
+test_that("p < n does not emit the keep-recommendation warning", {
+    df <- make_pgtn(n = 200L, p = 10L, seed = 1004L)
+    fml <- stats::as.formula(
+        paste("y ~", paste(setdiff(names(df), "y"), collapse = "+")))
+    expect_warning(
+        suppressMessages(
+            fit <- fbrglm(fml, data = df, family = "binomial",
+                          lambda = "fix", lambda_value = 0.05)
+        ),
+        regexp = NA  # no warnings expected
+    )
+    expect_equal(fit$rank_info$policy, "drop")
+})
+
+test_that("p >= n dimension check uses intercept-stripped column count", {
+    ## With an explicit intercept-less formula (y ~ 0 + ...) the
+    ## design has exactly p columns and no intercept to subtract, so
+    ## the check must still compare p against n on the actually-built
+    ## X. Here p = 30 >= n = 30 → warning expected.
+    df <- make_pgtn(n = 30L, p = 30L, seed = 1005L)
+    fml <- stats::as.formula(
+        paste("y ~ 0 +", paste(setdiff(names(df), "y"), collapse = "+")))
+    w <- tryCatch(
+        suppressMessages(
+            fbrglm(fml, data = df, family = "binomial",
+                   lambda = "fix", lambda_value = 0.05)
+        ),
+        warning = function(e) conditionMessage(e)
+    )
+    expect_type(w, "character")
+    expect_match(w, "p = 30 >= n = 30")
+})

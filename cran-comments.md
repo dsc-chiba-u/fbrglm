@@ -2,13 +2,14 @@
 
 ## Release
 
-This is the second CRAN release of `fbrglm`, version 0.1.0
-(initial 0.0.1 was accepted earlier). The minor bump reflects the
-new exported S3 methods listed below; there are no breaking changes
-to existing function signatures, only behavioural changes spelled
-out in `NEWS.md` (the default behaviour of `plot()` now shows
-glm-style diagnostic panels; the previous regularization-path
-behaviour remains available via `plot(fit, what = "path")`).
+This is the third CRAN release of `fbrglm`, version 0.2.0
+(0.0.1 and 0.1.0 were accepted earlier). The minor bump reflects
+two new user-facing arguments on `fbrglm()` (`rank_policy` and
+`qr_tol`) and a new warning when the design is in the `p >= n`
+regime under the default `rank_policy = "drop"`. All existing
+function signatures remain source- and binary-compatible (the new
+arguments are defaulted), and the new warning does not alter the
+fitted path for any existing user. Full details in `NEWS.md`.
 
 ## Test environments
 
@@ -49,13 +50,13 @@ None — this is a new package.
   `glmnet` / `cv.glmnet` calls are reachable through the
   `as_glmnet()` / `as_cv_glmnet()` accessors so downstream callers
   can keep using glmnet-specific helpers directly.
-* Version 0.1.0 adds `tidy()` and `glance()` S3 methods registered
-  against `generics::tidy` / `generics::glance`, so the standard
-  `broom` workflow (`tidy(fit)`, `glance(fit)`) works on `fbrglm`
-  fits. The new `plot()` mode shows `glm()`-style residual
-  diagnostics (Residuals vs Fitted, Normal Q-Q, Scale-Location),
-  intentionally omitting the leverage / Cook's-distance panels for
-  which there is no canonical regularized analogue.
+* Version 0.2.0 adds the user-controllable `rank_policy` and
+  `qr_tol` arguments (together surfacing the pre-fit QR rank-check
+  that was previously an implementation detail) and emits a
+  recommendation warning when the design is in the `p >= n` regime
+  under the default `rank_policy = "drop"`. The earlier v0.1.0
+  additions — `tidy()` and `glance()` S3 methods against `generics::`
+  and the `glm()`-style `plot()` panels — remain unchanged.
 * The companion benchmark / replication material lives in a separate
   repository
   (<https://github.com/dsc-chiba-u/fbrglm-experiments>) and is not
